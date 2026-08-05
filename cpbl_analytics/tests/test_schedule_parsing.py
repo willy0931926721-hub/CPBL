@@ -6,7 +6,9 @@ fixture 裡的卡片結構是從實際爬蟲失敗訊息裡貼出來的真實 HT
 """
 from __future__ import annotations
 
-from cpbl_analytics.scraper.schedule import fetch_schedule
+from bs4 import BeautifulSoup
+
+from cpbl_analytics.scraper.schedule import _game_group_context_snippet, fetch_schedule
 from cpbl_analytics.validation import validate_schedule
 
 REAL_STRUCTURE_HTML = """
@@ -196,3 +198,61 @@ def test_fetch_schedule_prints_diagnostic_html_when_all_upcoming_pitchers_missin
     captured = capsys.readouterr()
     assert "沒有抓到先發投手" in captured.out
     assert "所有比賽都沒有抓到日期" not in captured.out
+
+
+def test_game_group_context_snippet_walks_up_ancestor_chain_not_guessed_container():
+    # 這是實際踩到的地雷：_diagnostic_html_snippet() 用「class 名稱裡有
+    # schedule 字樣」去猜容器，production 上真的誤中了搜尋篩選表單
+    # （class="ScheduleSearch"，字面符合但語意無關），完全沒有幫助。這裡
+    # 確認新版改成「直接照 DOM 結構往上爬固定層數」之後，不會被一個語意
+    # 無關、但 class 名稱長得很像的元素誤導——往上爬到的內容應該包含日期
+    # 標題（在祖先層級的兄弟元素），而不是完全不相關的篩選表單。
+    html = """
+    <html><body>
+      <div class="ScheduleSearch FormElmt">
+        <select><option>2026</option></select>
+      </div>
+      <div class="day_group">
+        <div class="date_title">2026/08/09(日)</div>
+        <div class="game">
+          <a href="/box?year=2026&kindCode=A&gameSno=246">
+            <div>
+              <div class="vs_box">
+                <div class="team away"><span title="統一7-ELEVEn獅">統一7-ELEVEn獅</span></div>
+                <div class="team home"><span title="味全龍">味全龍</span></div>
+              </div>
+            </div>
+          </a>
+        </div>
+      </div>
+    </body></html>
+    """
+    soup = BeautifulSoup(html, "lxml")
+    card = soup.select_one(".game")
+
+    snippet = _game_group_context_snippet(card, ancestor_levels=1)
+
+    assert "2026/08/09" in snippet
+    assert "ScheduleSearch" not in snippet
+
+
+def test_game_group_context_snippet_truncates_long_output():
+    html = "<html><body><div>" + ("x" * 20000) + '<div class="game"></div></div></body></html>'
+    soup = BeautifulSoup(html, "lxml")
+    card = soup.select_one(".game")
+
+    snippet = _game_group_context_snippet(card, ancestor_levels=1, limit=500)
+
+    assert len(snippet) < 1000
+    assert "截斷" in snippet
+
+
+def test_game_group_context_snippet_stops_at_document_root_without_erroring():
+    # ancestor_levels 比實際祖先層數還多時，不該爆例外，直接停在最上層。
+    html = '<div class="game">just this</div>'
+    soup = BeautifulSoup(html, "lxml")
+    card = soup.select_one(".game")
+
+    snippet = _game_group_context_snippet(card, ancestor_levels=50)
+
+    assert "just this" in snippet
