@@ -1,16 +1,5 @@
 [
   {
-    "team_name":"樂天桃猿",
-    "season_win_pct":0.632,
-    "pythagorean_win_pct":0.113,
-    "recent_form_win_pct":0.6,
-    "home_win_pct":0.625,
-    "away_win_pct":0.636,
-    "power_rating":0.435,
-    "home_edge_vs_league":0.075,
-    "away_edge_vs_league":0.056
-  },
-  {
     "team_name":"味全龍",
     "season_win_pct":0.6,
     "pythagorean_win_pct":0.718,
@@ -18,19 +7,30 @@
     "home_win_pct":0.636,
     "away_win_pct":0.556,
     "power_rating":0.59,
-    "home_edge_vs_league":0.091,
-    "away_edge_vs_league":0.011
+    "home_edge_vs_league":0.088,
+    "away_edge_vs_league":0.012
+  },
+  {
+    "team_name":"樂天桃猿",
+    "season_win_pct":0.6,
+    "pythagorean_win_pct":0.174,
+    "recent_form_win_pct":0.6,
+    "home_win_pct":0.625,
+    "away_win_pct":0.583,
+    "power_rating":0.443,
+    "home_edge_vs_league":0.072,
+    "away_edge_vs_league":0.032
   },
   {
     "team_name":"台鋼雄鷹",
-    "season_win_pct":0.526,
-    "pythagorean_win_pct":0.916,
-    "recent_form_win_pct":0.4,
-    "home_win_pct":0.556,
+    "season_win_pct":0.55,
+    "pythagorean_win_pct":0.777,
+    "recent_form_win_pct":0.5,
+    "home_win_pct":0.6,
     "away_win_pct":0.5,
-    "power_rating":0.595,
-    "home_edge_vs_league":0.045,
-    "away_edge_vs_league":-0.015
+    "power_rating":0.577,
+    "home_edge_vs_league":0.067,
+    "away_edge_vs_league":-0.014
   },
   {
     "team_name":"統一7-ELEVEn獅",
@@ -40,29 +40,29 @@
     "home_win_pct":0.455,
     "away_win_pct":0.444,
     "power_rating":0.5,
-    "home_edge_vs_league":-0.005,
-    "away_edge_vs_league":-0.041
+    "home_edge_vs_league":-0.007,
+    "away_edge_vs_league":-0.04
   },
   {
     "team_name":"中信兄弟",
-    "season_win_pct":0.421,
+    "season_win_pct":0.4,
     "pythagorean_win_pct":0.291,
-    "recent_form_win_pct":0.5,
-    "home_win_pct":0.364,
+    "recent_form_win_pct":0.4,
+    "home_win_pct":0.333,
     "away_win_pct":0.5,
-    "power_rating":0.438,
-    "home_edge_vs_league":-0.052,
-    "away_edge_vs_league":-0.015
+    "power_rating":0.423,
+    "home_edge_vs_league":-0.074,
+    "away_edge_vs_league":-0.014
   },
   {
     "team_name":"富邦悍將",
-    "season_win_pct":0.368,
+    "season_win_pct":0.4,
     "pythagorean_win_pct":0.441,
     "recent_form_win_pct":0.4,
     "home_win_pct":0.25,
-    "away_win_pct":0.455,
-    "power_rating":0.456,
-    "home_edge_vs_league":-0.092,
-    "away_edge_vs_league":-0.039
+    "away_win_pct":0.5,
+    "power_rating":0.46,
+    "home_edge_vs_league":-0.094,
+    "away_edge_vs_league":-0.014
   }
 ]
