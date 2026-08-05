@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/*
+ * 設計規格來源：使用者提供的「CPBL AI 預測分析平台」設計 prompt，
+ * 融合 Apple Sports / ESPN / Sofascore / Flashscore / Linear / TradingView
+ * 的質感，走 Dark Mode、Glassmorphism、Premium Sports Analytics 風格，
+ * 刻意不做成一般運彩網站的花俏霓虹樣式。
+ *
+ * 字體刻意不用真的 SF Pro 字型檔（Apple 的字型授權只給 Apple 平台上的
+ * App 用，網頁自行嵌入字型檔案有授權疑慮）。改用系統字體堆疊
+ * `-apple-system` / `BlinkMacSystemFont`：在 Mac／iOS 上瀏覽器本來就會
+ * 解析成真正的 SF Pro，其他平台則優雅退回到當地系統預設字體，效果一樣、
+ * 沒有授權問題。
+ */
+:root {
+  --color-bg: #090b10;
+  --color-card: #151922;
+  --color-card-border: rgba(255, 255, 255, 0.08);
+  --color-divider: rgba(255, 255, 255, 0.08);
+
+  --color-blue: #3b82f6;
+  --color-green: #32d74b;
+  --color-orange: #ff9f0a;
+  --color-red: #ff453a;
+
+  --color-text: #ffffff;
+  --color-text-secondary: rgba(255, 255, 255, 0.6);
+  --color-text-tertiary: rgba(255, 255, 255, 0.38);
+
+  --font-display:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Helvetica Neue", "PingFang TC", "Noto Sans TC", Arial, sans-serif;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-card: var(--color-card);
+  --color-blue: var(--color-blue);
+  --color-green: var(--color-green);
+  --color-orange: var(--color-orange);
+  --color-red: var(--color-red);
+  --color-text: var(--color-text);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-tertiary: var(--color-text-tertiary);
+  --font-sans: var(--font-display);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 玻璃卡片：所有主要內容卡片共用的底層樣式（見 components/GlassCard.tsx）。
+   Rounded 24px、輕微邊框、模糊底層背景，Hover 時微微上浮，是整個網站
+   「Premium / Glassmorphism」質感最主要的來源。 */
+.glass-surface {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  ),
+  var(--color-card);
+  border: 1px solid var(--color-card-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* iOS safe area：底部浮動導覽列需要避開 Home Indicator / Dynamic Island
+   造成的安全區域，這裡集中定義，元件直接用這個 class。 */
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}

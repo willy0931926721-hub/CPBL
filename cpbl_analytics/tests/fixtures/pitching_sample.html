@@ -1,0 +1,64 @@
+<!--
+  「全記錄查詢」投手頁面（切到「投手成績」分頁後）的模擬範例，結構比照
+  batting_sample.html 同一套「排名/球隊/球員合併成一個儲存格」的真實格式。
+
+  表頭順序、文字已比照 2026-07-28 實際 GitHub Actions 執行結果裡確認過的
+  真實表頭：防禦率/出賽數/先發/救援/完投/完封/勝場/敗場/救援成功/中繼成功/
+  打席/投球數/投球局數/被安打/被全壘打（表格從這裡開始官網回應被截斷，
+  後面幾欄還沒有實際確認過，沿用先前的推測欄名）。特地保留「救援」
+  （跟「救援成功」是不同欄位）跟「打席」「投球數」這三個目前沒有對應到
+  任何內部欄位的表頭，用來測試 parser 遇到不認識的表頭時只是忽略、
+  不會誤把資料對應錯位。
+
+  局數欄位刻意使用「150.2」這種官網記號（150又2/3局），用來測試
+  parse_innings_to_outs 是否正確轉換為出局數，而不是誤當成十進位小數。
+  非官網即時資料。
+-->
+<html>
+<body>
+<table class="RecordTable">
+  <tr>
+    <th class="sticky">
+      <div class="sticky_wrap nowrap">
+        <div class="rank">排名</div>
+        <div class="player-w-logo">球員</div>
+      </div>
+    </th>
+    <th>防禦率</th><th>出賽數</th><th>先發</th><th>救援</th><th>完投</th><th>完封</th>
+    <th>勝場</th><th>敗場</th><th>救援成功</th><th>中繼成功</th><th>打席</th><th>投球數</th>
+    <th>投球局數</th><th>被安打</th><th>被全壘打</th><th>四壞球</th><th>故意四壞</th>
+    <th>死球</th><th>三振</th><th>暴投</th><th>犯規</th><th>失分</th><th>自責分</th><th>WHIP</th>
+  </tr>
+  <tr>
+    <td>
+      <div class="sticky_wrap nowrap">
+        <div class="rank">1</div>
+        <div class="player-w-logo">
+          <span class="team_logo"><a href="/team?TeamNo=Z" title="樂天桃猿">樂天桃猿</a></span>
+          <span class="name"><a href="/team/person?acnt=10">張投手</a></span>
+        </div>
+      </div>
+    </td>
+    <td>3.29</td><td>25</td><td>25</td><td>0</td><td>2</td><td>1</td>
+    <td>15</td><td>8</td><td>0</td><td>0</td><td>620</td><td>2350</td>
+    <td>150.2</td><td>140</td><td>12</td><td>40</td><td>2</td>
+    <td>5</td><td>130</td><td>4</td><td>0</td><td>60</td><td>55</td><td>1.19</td>
+  </tr>
+  <tr>
+    <td>
+      <div class="sticky_wrap nowrap">
+        <div class="rank">2</div>
+        <div class="player-w-logo">
+          <span class="team_logo"><a href="/team?TeamNo=W" title="富邦悍將">富邦悍將</a></span>
+          <span class="name"><a href="/team/person?acnt=11">林救援</a></span>
+        </div>
+      </div>
+    </td>
+    <td>2.89</td><td>60</td><td>0</td><td>60</td><td>0</td><td>0</td>
+    <td>4</td><td>2</td><td>18</td><td>0</td><td>260</td><td>980</td>
+    <td>62.1</td><td>55</td><td>5</td><td>25</td><td>1</td>
+    <td>3</td><td>70</td><td>2</td><td>0</td><td>22</td><td>20</td><td>1.28</td>
+  </tr>
+</table>
+</body>
+</html>

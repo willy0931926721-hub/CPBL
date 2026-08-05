@@ -1,0 +1,73 @@
+<!--
+  這是「本季球隊戰績」頁面的模擬範例，結構比照 2026 球季官網實際 HTML
+  （排名/球隊合併儲存格、勝-和-敗合併欄位、對戰戰績動態欄位等），
+  但只放 2 支球隊、數字經過人工設計以自洽（8/13=0.615、7/14=0.5），
+  用來測試 parser 對「真實結構」的解析邏輯是否正確，非官網即時資料。
+-->
+<html>
+<body>
+<table>
+<tr>
+<th class="sticky">
+<div class="sticky_wrap">
+<div class="rank">排名</div>
+<div class="team-w-trophy">球隊</div>
+</div>
+</th>
+<th class="num">出賽數</th>
+<th class="num">勝-和-敗</th>
+<th class="num">勝率</th>
+<th class="num">勝差</th>
+<th class="num">淘汰指數</th>
+<th class="num">台鋼雄鷹</th>
+<th class="num">統一7-ELEVEn獅</th>
+<th class="num">主場戰績</th>
+<th class="num">客場戰績</th>
+<th>連勝/連敗</th>
+<th class="num">近十場戰績</th>
+</tr>
+<tr>
+<td class="sticky">
+<div class="sticky_wrap">
+<div class="rank">1</div>
+<div class="team-w-trophy">
+<a href="/team?TeamNo=AJL011">樂天桃猿</a>
+</div>
+</div>
+</td>
+<td class="num">13</td>
+<td class="num">8-0-5</td>
+<td class="num">0.615</td>
+<td class="num">-</td>
+<td class="num"></td>
+<td class="num"> </td>
+<td class="num">1-0-1</td>
+<td class="num">4-0-2</td>
+<td class="num">4-0-3</td>
+<td>勝2</td>
+<td class="num">6-0-4</td>
+</tr>
+<tr>
+<td class="sticky">
+<div class="sticky_wrap">
+<div class="rank">3</div>
+<div class="team-w-trophy">
+<a href="/team?TeamNo=ADD011">統一7-ELEVEn獅</a>
+</div>
+</div>
+</td>
+<td class="num">14</td>
+<td class="num">7-0-7</td>
+<td class="num">0.5</td>
+<td class="num">1.5</td>
+<td class="num">46</td>
+<td class="num">1-0-1</td>
+<td class="num"> </td>
+<td class="num">4-0-3</td>
+<td class="num">3-0-4</td>
+<td>敗1</td>
+<td class="num">5-0-5</td>
+</tr>
+</table>
+</body>
+</html>

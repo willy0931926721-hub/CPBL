@@ -1,0 +1,145 @@
+{
+  "generated_at": "2026-07-28T06:53:18.548812+00:00",
+  "datasets": {
+    "standings": {
+      "all_passed": true,
+      "error_count": 0,
+      "warning_count": 0,
+      "checks": [
+        {
+          "name": "球隊名稱重複檢查",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "出賽數 = 勝+負+和 一致性檢查",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "勝率 = 勝 / (勝+負) 交叉驗證",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "全聯盟勝場數 = 敗場數（雙人零和）檢查",
+          "passed": true,
+          "severity": "warning",
+          "message": "通過（總勝場與總敗場相等）",
+          "offending_items": []
+        }
+      ]
+    },
+    "batting": {
+      "all_passed": true,
+      "error_count": 0,
+      "warning_count": 0,
+      "checks": [
+        {
+          "name": "打者重複列檢查",
+          "passed": true,
+          "severity": "error",
+          "message": "沒有重複的球員列",
+          "offending_items": []
+        },
+        {
+          "name": "打者基礎欄位邏輯一致性",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "打擊率 AVG = 安打 / 打數 交叉驗證",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "上壘率 OBP 交叉驗證",
+          "passed": true,
+          "severity": "warning",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "長打率 SLG 交叉驗證",
+          "passed": true,
+          "severity": "warning",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "OPS = OBP + SLG 交叉驗證",
+          "passed": true,
+          "severity": "warning",
+          "message": "通過",
+          "offending_items": []
+        }
+      ]
+    },
+    "pitching": {
+      "all_passed": true,
+      "error_count": 0,
+      "warning_count": 0,
+      "checks": [
+        {
+          "name": "投手重複列檢查",
+          "passed": true,
+          "severity": "error",
+          "message": "沒有重複的球員列",
+          "offending_items": []
+        },
+        {
+          "name": "防禦率 ERA 交叉驗證",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "WHIP 交叉驗證",
+          "passed": true,
+          "severity": "warning",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "投手基礎欄位邏輯一致性（自責分 <= 失分）",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        }
+      ]
+    },
+    "schedule": {
+      "all_passed": true,
+      "error_count": 0,
+      "warning_count": 0,
+      "checks": [
+        {
+          "name": "主客隊不可相同",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        },
+        {
+          "name": "比分不可為負數",
+          "passed": true,
+          "severity": "error",
+          "message": "通過",
+          "offending_items": []
+        }
+      ]
+    }
+  }
+}
