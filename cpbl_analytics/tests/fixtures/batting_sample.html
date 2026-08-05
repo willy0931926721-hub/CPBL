@@ -1,0 +1,69 @@
+<!--
+  「全記錄查詢」打者頁面的模擬範例，結構比照 2026 球季官網實際 HTML
+  （排名/球隊/球員合併成一個儲存格、（故四）欄位數值本身帶括號、
+  OPS 稱為「整體攻擊指數」、另外有獨立的 OPS+ 欄位），
+  數字經人工設計使 AVG=H/AB、OBP/SLG/OPS 公式均成立，非官網即時資料。
+-->
+<html>
+<body>
+<table class="RecordTable">
+  <tr>
+    <th class="sticky">
+      <div class="sticky_wrap nowrap">
+        <div class="rank">排名</div>
+        <div class="player-w-logo">球員</div>
+      </div>
+    </th>
+    <th>打擊率</th><th>出賽數</th><th>打席</th><th>打數</th><th>得分</th><th>打點</th><th>安打</th>
+    <th>二安</th><th>三安</th><th>全壘打</th><th>四壞</th><th>（故四）</th><th>死球</th><th>被三振</th>
+    <th>雙殺打</th><th>犧短</th><th>犧飛</th><th>盜壘</th><th>盜壘刺</th><th>上壘率</th><th>長打率</th>
+    <th>整體攻擊指數</th><th>OPS+</th>
+  </tr>
+  <tr>
+    <td>
+      <div class="sticky_wrap nowrap">
+        <div class="rank">1</div>
+        <div class="player-w-logo">
+          <span class="team_logo"><a href="/team?TeamNo=X" title="中信兄弟">中信兄弟</a></span>
+          <span class="name"><a href="/team/person?acnt=1">王大明</a></span>
+        </div>
+      </div>
+    </td>
+    <td>.300</td><td>95</td><td>460</td><td>400</td><td>65</td><td>70</td><td>120</td>
+    <td>20</td><td>2</td><td>15</td><td>50</td><td>（2）</td><td>5</td><td>70</td>
+    <td>8</td><td>2</td><td>3</td><td>10</td><td>3</td><td>.382</td><td>.473</td>
+    <td>.855</td><td>120</td>
+  </tr>
+  <tr>
+    <td>
+      <div class="sticky_wrap nowrap">
+        <div class="rank">2</div>
+        <div class="player-w-logo">
+          <span class="team_logo"><a href="/team?TeamNo=Y" title="統一7-ELEVEn獅">統一7-ELEVEn獅</a></span>
+          <span class="name"><a href="/team/person?acnt=2">陳小華</a></span>
+        </div>
+      </div>
+    </td>
+    <td>.257</td><td>90</td><td>387</td><td>350</td><td>45</td><td>40</td><td>90</td>
+    <td>15</td><td>1</td><td>8</td><td>30</td><td>（1）</td><td>2</td><td>60</td>
+    <td>6</td><td>3</td><td>2</td><td>5</td><td>2</td><td>.318</td><td>.374</td>
+    <td>.692</td><td>95</td>
+  </tr>
+  <tr>
+    <td>
+      <div class="sticky_wrap nowrap">
+        <div class="rank">3</div>
+        <div class="player-w-logo">
+          <span class="team_logo"><a href="/team?TeamNo=X" title="中信兄弟">中信兄弟</a></span>
+          <span class="name"><a href="/team/person?acnt=3">李國強</a></span>
+        </div>
+      </div>
+    </td>
+    <td>.320</td><td>120</td><td>567</td><td>500</td><td>90</td><td>100</td><td>160</td>
+    <td>30</td><td>4</td><td>25</td><td>55</td><td>（3）</td><td>6</td><td>90</td>
+    <td>10</td><td>1</td><td>5</td><td>15</td><td>5</td><td>.390</td><td>.546</td>
+    <td>.936</td><td>145</td>
+  </tr>
+</table>
+</body>
+</html>

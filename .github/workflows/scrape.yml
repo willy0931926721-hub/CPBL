@@ -1,0 +1,71 @@
+name: 定期更新 CPBL 資料
+
+# 這個 workflow 讓你不需要自己開電腦：GitHub 會在雲端的伺服器上，
+# 依照下面的排程時間，自動執行爬蟲 + 資料驗證，並把最新結果 commit 回這個 repo。
+#
+# 想要「馬上更新一次」而不等排程時間到：
+#   到這個 repo 的 Actions 分頁 -> 左側選「定期更新 CPBL 資料」-> 右上角
+#   「Run workflow」按鈕 -> 直接按下去就會開始跑，全程不需要打開自己的電腦。
+
+on:
+  schedule:
+    # UTC 20:00 = 台北時間隔天 04:00。中華職棒比賽通常在晚上結束，
+    # 隔天凌晨抓資料可以確保前一天的戰績/數據都已經更新在官網上。
+    # 想改頻率／時間，直接改這一行（cron 語法：分 時 日 月 星期）。
+    - cron: "0 20 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cpbl-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取出 repo
+        uses: actions/checkout@v4
+
+      - name: 安裝 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安裝相依套件
+        run: pip install -r requirements.txt
+
+      - name: 安裝 Playwright 的瀏覽器（賽程頁是 JS 動態渲染，需要真的瀏覽器）
+        run: playwright install --with-deps chromium
+
+      - name: 執行爬蟲與資料驗證
+        id: scrape
+        # 四個資料集是各自獨立爬的（見 cli.py），只要有一個失敗整個指令就會
+        # 回傳非 0——如果不加這個，GitHub Actions 預設會直接跳過下一步
+        # 「提交更新後的資料快照」，導致其他三個明明有成功、已經匯出好的
+        # 資料集也一起被卡住、永遠沒有 commit 回 repo。加了這個之後，改成
+        # 下面的步驟自己判斷要不要 commit、以及要不要讓這次執行整體標記失敗。
+        continue-on-error: true
+        run: python -m cpbl_analytics.cli scrape
+
+      - name: 提交更新後的資料快照
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/latest
+          if git diff --cached --quiet; then
+            echo "資料沒有變化，不需要 commit。"
+          else
+            git commit -m "自動更新 CPBL 資料快照 $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          fi
+
+      - name: 若有資料集抓取失敗，把這次執行標記為失敗（但上面已經先把成功的部分存好了）
+        if: steps.scrape.outcome == 'failure'
+        run: |
+          echo "至少有一個資料集抓取/驗證失敗，詳見上面「執行爬蟲與資料驗證」步驟的輸出。"
+          echo "有成功的資料集已經照常 commit 回 repo，不會被這個失敗卡住。"
+          exit 1

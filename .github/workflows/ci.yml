@@ -1,0 +1,54 @@
+name: CI
+
+# 在 push／PR 時跑測試與建置檢查，跟 scrape.yml（排程爬蟲）分開——
+# 這裡只驗證「程式邏輯本身」（parser、驗證、預測公式、Next.js 建置與型別
+# 檢查）沒有壞掉，不需要連到 CPBL 官網，CI 環境的網路限制也不會影響到它。
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取出 repo
+        uses: actions/checkout@v4
+
+      - name: 安裝 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 安裝相依套件
+        run: pip install -r requirements.txt
+
+      - name: 執行測試（不需要網路，用離線 fixtures）
+        run: pytest cpbl_analytics/tests -v
+
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取出 repo
+        uses: actions/checkout@v4
+
+      - name: 安裝 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安裝相依套件
+        working-directory: web
+        run: npm ci
+
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+      - name: 建置（含 TypeScript 型別檢查）
+        working-directory: web
+        run: npm run build
