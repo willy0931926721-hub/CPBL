@@ -7,19 +7,19 @@
     "home_win_pct":0.625,
     "away_win_pct":0.636,
     "power_rating":0.435,
-    "home_edge_vs_league":0.081,
-    "away_edge_vs_league":0.047
+    "home_edge_vs_league":0.075,
+    "away_edge_vs_league":0.056
   },
   {
     "team_name":"味全龍",
-    "season_win_pct":0.579,
-    "pythagorean_win_pct":0.715,
+    "season_win_pct":0.6,
+    "pythagorean_win_pct":0.718,
     "recent_form_win_pct":0.7,
-    "home_win_pct":0.6,
+    "home_win_pct":0.636,
     "away_win_pct":0.556,
-    "power_rating":0.584,
-    "home_edge_vs_league":0.075,
-    "away_edge_vs_league":0.002
+    "power_rating":0.59,
+    "home_edge_vs_league":0.091,
+    "away_edge_vs_league":0.011
   },
   {
     "team_name":"台鋼雄鷹",
@@ -29,40 +29,40 @@
     "home_win_pct":0.556,
     "away_win_pct":0.5,
     "power_rating":0.595,
-    "home_edge_vs_league":0.052,
-    "away_edge_vs_league":-0.024
+    "home_edge_vs_league":0.045,
+    "away_edge_vs_league":-0.015
   },
   {
     "team_name":"統一7-ELEVEn獅",
-    "season_win_pct":0.474,
-    "pythagorean_win_pct":0.588,
+    "season_win_pct":0.45,
+    "pythagorean_win_pct":0.571,
     "recent_form_win_pct":0.4,
     "home_win_pct":0.455,
-    "away_win_pct":0.5,
-    "power_rating":0.508,
-    "home_edge_vs_league":0.001,
-    "away_edge_vs_league":-0.024
+    "away_win_pct":0.444,
+    "power_rating":0.5,
+    "home_edge_vs_league":-0.005,
+    "away_edge_vs_league":-0.041
   },
   {
     "team_name":"中信兄弟",
     "season_win_pct":0.421,
-    "pythagorean_win_pct":0.276,
+    "pythagorean_win_pct":0.291,
     "recent_form_win_pct":0.5,
     "home_win_pct":0.364,
     "away_win_pct":0.5,
-    "power_rating":0.434,
-    "home_edge_vs_league":-0.046,
-    "away_edge_vs_league":-0.024
+    "power_rating":0.438,
+    "home_edge_vs_league":-0.052,
+    "away_edge_vs_league":-0.015
   },
   {
     "team_name":"富邦悍將",
     "season_win_pct":0.368,
-    "pythagorean_win_pct":0.433,
+    "pythagorean_win_pct":0.441,
     "recent_form_win_pct":0.4,
     "home_win_pct":0.25,
     "away_win_pct":0.455,
-    "power_rating":0.454,
-    "home_edge_vs_league":-0.086,
-    "away_edge_vs_league":-0.048
+    "power_rating":0.456,
+    "home_edge_vs_league":-0.092,
+    "away_edge_vs_league":-0.039
   }
 ]
