@@ -10,13 +10,20 @@
   例如 "（0）"，不是「安打」那種欄位的乾淨數字。
 - 「整體攻擊指數」才是這個網頁對 OPS 的稱呼；另外還有一個「OPS+」
   （進階、聯盟平均校正過的版本），跟原始 OPS 是不同的數字，不要混在一起。
+
+⚠️ 之前的版本用純 requests（get_html）抓這一頁，改成瀏覽器渲染
+（get_rendered_html_expand_page_size）是因為觀察到榜單預設只顯示前 15 名，
+猜測官網有「每頁筆數」下拉選單、需要真的瀏覽器互動才能展開全部——這部分
+也還沒對照過官網真實 HTML 確認選單長什麼樣子，見 http.py 裡
+_try_expand_page_size 的說明；找不到這種選單的話，行為就跟改版前一樣，
+只是仍然只有預設顯示的那些筆數。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
 from cpbl_analytics.config import URLS
-from cpbl_analytics.scraper.http import ParsingError, get_html
+from cpbl_analytics.scraper.http import ParsingError, get_rendered_html_expand_page_size
 from cpbl_analytics.scraper.parsing_utils import (
     ColumnSpec,
     parse_table,
@@ -106,8 +113,14 @@ def _split_team_and_player(raw: str) -> tuple[int | None, str, str]:
 
 def fetch_batting_stats(*, html: str | None = None, year: int | None = None) -> list[BattingStat]:
     if html is None:
-        params = {"year": year} if year else None
-        html = get_html(URLS["record_all"], params=params)
+        url = URLS["record_all"]
+        if year:
+            url = f"{url}?year={year}"
+        # 用瀏覽器渲染（而不是純 requests）抓這一頁，是為了能順便嘗試展開
+        # 「每頁筆數」下拉選單（見 http.py 的 get_rendered_html_expand_page_size
+        # 說明）——官網這個榜單頁面觀察到預設只顯示前 15 名，猜測是有分頁
+        # 機制，用純 requests 沒辦法跟這種下拉選單互動。
+        html = get_rendered_html_expand_page_size(url)
 
     rows = parse_table(html, table_selector=TABLE_SELECTOR, columns=COLUMNS)
 

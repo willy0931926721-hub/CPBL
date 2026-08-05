@@ -125,7 +125,7 @@ def export_predictions(
 
     power_ratings = compute_team_power_ratings(standings_df, batting_df, pitching_df)
     upcoming = (
-        predict_upcoming_games(schedule_df, power_ratings)
+        predict_upcoming_games(schedule_df, power_ratings, pitching_df)
         if not schedule_df.empty and not power_ratings.empty
         else pd.DataFrame()
     )

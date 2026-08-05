@@ -14,7 +14,10 @@ export function PredictionCard({ game }: { game: GamePrediction }) {
       <div className="p-5">
         <div className="flex items-center justify-between">
           <span className="text-[11px] text-[var(--color-text-tertiary)]">
-            {game.gameDate} 日 · {game.venue ?? "場地未定"}
+            <span className="text-[var(--color-text-tertiary)]/70">日期</span> {game.gameDate}
+            {" · "}
+            <span className="text-[var(--color-text-tertiary)]/70">場地</span>{" "}
+            {game.venue ?? "場地未定"}
           </span>
           <ConfidenceStars rating={confidence} size={13} />
         </div>
@@ -52,6 +55,23 @@ export function PredictionCard({ game }: { game: GamePrediction }) {
         <div className="mt-4 flex items-center justify-between rounded-2xl bg-white/[0.03] px-4 py-2 text-[11px] text-[var(--color-text-tertiary)]">
           <span>實力評分 {game.awayPowerRating.toFixed(3)}</span>
           <span>實力評分 {game.homePowerRating.toFixed(3)}</span>
+        </div>
+
+        <div className="mt-2 flex items-start justify-between rounded-2xl bg-white/[0.03] px-4 py-2 text-[11px] text-[var(--color-text-tertiary)]">
+          <div className="flex flex-col items-start gap-0.5">
+            <span className="text-[var(--color-text-tertiary)]/70">先發投手</span>
+            <span className="text-[var(--color-text-secondary)]">
+              {game.awayPitcher ?? "未定"}
+              {game.awayPitcherEra !== null && ` · ERA ${game.awayPitcherEra.toFixed(2)}`}
+            </span>
+          </div>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[var(--color-text-tertiary)]/70">先發投手</span>
+            <span className="text-[var(--color-text-secondary)]">
+              {game.homePitcher ?? "未定"}
+              {game.homePitcherEra !== null && ` · ERA ${game.homePitcherEra.toFixed(2)}`}
+            </span>
+          </div>
         </div>
       </div>
 

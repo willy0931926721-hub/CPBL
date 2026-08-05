@@ -156,12 +156,35 @@ def get_rendered_html(
     return _with_rendered_page(url, _run, timeout_ms=timeout_ms)
 
 
+def get_rendered_html_expand_page_size(url: str, *, timeout_ms: int = 20000) -> str:
+    """載入網頁後，若找到「每頁筆數」類的下拉選單且有「全部」這種選項，
+    切換過去，回傳（可能已展開成全部筆數的）渲染後 HTML。
+
+    給「全記錄查詢」這種可能有分頁、預設只顯示前面一小部分（例如打者/投手
+    榜單只顯示前 15 名）的頁面用。找不到這種選單就直接回傳原本渲染後的
+    內容、不強制失敗——這樣即使這個功能在正式站台上失效（例如官網其實用
+    完全不同的分頁機制、不是下拉選單），也不會比原本「至少能抓到預設顯示
+    的那些筆數」更差，只是沒辦法補上分頁隱藏的資料而已。
+
+    Raises:
+        FetchError: 瀏覽器啟動失敗、頁面載入逾時等問題。
+    """
+    def _run(page):
+        _goto_with_www_fallback(page, url, timeout_ms=timeout_ms)
+        if _try_expand_page_size(page):
+            page.wait_for_load_state("networkidle", timeout=timeout_ms)
+        return page.content()
+
+    return _with_rendered_page(url, _run, timeout_ms=timeout_ms)
+
+
 def get_rendered_html_after_selecting(
     url: str,
     *,
     option_text: str,
     verify_text_absent: str | None = None,
     verify_text_present: str | None = None,
+    expand_page_size: bool = False,
     timeout_ms: int = 20000,
 ) -> str:
     """載入網頁後，切換到某個分頁／篩選選項，再回傳切換後的渲染結果。
@@ -189,6 +212,10 @@ def get_rendered_html_after_selecting(
             剛好包含舊字串的子字串，只需要確認新畫面「確實有」新內容的
             專屬標記。verify_text_absent 和 verify_text_present 可以同時
             提供，兩者都會被檢查。
+        expand_page_size: 選填。切換完分頁後，若畫面上有「每頁筆數」類的
+            下拉選單且有「全部」這種選項，會嘗試切換過去（見
+            get_rendered_html_expand_page_size 的說明）。找不到這種選單
+            不會報錯，只是沒辦法補上分頁隱藏的資料。
         timeout_ms: 逾時時間（毫秒）。
 
     Raises:
@@ -198,7 +225,7 @@ def get_rendered_html_after_selecting(
 
     def _run(page):
         _goto_with_www_fallback(page, url, timeout_ms=timeout_ms)
-        return _select_and_verify(
+        content = _select_and_verify(
             page,
             url=url,
             option_text=option_text,
@@ -206,6 +233,10 @@ def get_rendered_html_after_selecting(
             verify_text_present=verify_text_present,
             timeout_ms=timeout_ms,
         )
+        if expand_page_size and _try_expand_page_size(page):
+            page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            content = page.content()
+        return content
 
     return _with_rendered_page(url, _run, timeout_ms=timeout_ms)
 
@@ -381,6 +412,33 @@ def _try_select_option(page, option_text: str) -> bool:
         sel = selects.nth(i)
         option_texts = [t.strip() for t in sel.locator("option").all_inner_texts()]
         match = next((t for t in option_texts if option_text in t), None)
+        if match is not None:
+            sel.select_option(label=match)
+            return True
+    return False
+
+
+_PAGE_SIZE_ALL_OPTION_TEXTS = ("全部", "不限", "顯示全部", "全部顯示", "ALL", "All", "all")
+
+
+def _try_expand_page_size(page) -> bool:
+    """找頁面上是不是有「每頁筆數」類的 <select>，有「全部」這種選項的話選取它。
+
+    只比對一組明確代表「顯示全部」字面意思的選項文字（見
+    _PAGE_SIZE_ALL_OPTION_TEXTS），刻意不用「文字包含全部」這種寬鬆比對
+    ——像球隊篩選這種下拉選單常見會有「全部球隊」這個選項，字面上包含
+    「全部」兩個字，但語意完全是另一件事（篩選條件，不是每頁筆數），
+    寬鬆比對很容易誤選到不相關的下拉選單，切換出不對的頁面內容。
+
+    找不到就回傳 False，呼叫端應該當成「這個頁面沒有這種選單，或者猜錯了
+    選項文字」處理，不要因此讓整個抓取流程失敗——這個功能本來就是「有的話
+    就多抓一點，沒有也不影響原本抓得到的資料」。
+    """
+    selects = page.locator("select")
+    for i in range(selects.count()):
+        sel = selects.nth(i)
+        option_texts = [t.strip() for t in sel.locator("option").all_inner_texts()]
+        match = next((t for t in option_texts if t in _PAGE_SIZE_ALL_OPTION_TEXTS), None)
         if match is not None:
             sel.select_option(label=match)
             return True
