@@ -124,9 +124,30 @@ CREATE TABLE IF NOT EXISTS games (
     away_score INTEGER,
     home_score INTEGER,
     status TEXT,
-    venue TEXT
+    venue TEXT,
+    away_pitcher TEXT,
+    home_pitcher TEXT
 );
 """
+
+
+#  (table, column, column 定義) 的清單：本機已經跑過舊版程式、已經有
+# data/cpbl.db 檔案的人，`CREATE TABLE IF NOT EXISTS` 不會幫既有的表補上
+# 新欄位（表已經存在，IF NOT EXISTS 直接跳過整個 CREATE 語句）。這裡用
+# PRAGMA table_info 檢查欄位是否已存在，缺的話才補（ALTER TABLE ADD
+# COLUMN），這樣不管是全新資料庫還是本機已經累積過歷史資料的舊資料庫，
+# 都能正常寫入新欄位，不用整個刪掉重建。
+_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("games", "away_pitcher", "TEXT"),
+    ("games", "home_pitcher", "TEXT"),
+]
+
+
+def _apply_column_migrations(conn: sqlite3.Connection) -> None:
+    for table, column, definition in _COLUMN_MIGRATIONS:
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 @contextmanager
@@ -139,6 +160,7 @@ def get_connection() -> Iterator[sqlite3.Connection]:
     # init_db()，如果沒有這一步，第一次讀取（例如「資料驗證」頁面）會直接
     # 因為「no such table」而整頁噴錯，而不是乾脆地顯示「尚無資料」。
     conn.executescript(SCHEMA)
+    _apply_column_migrations(conn)
     try:
         yield conn
         conn.commit()
@@ -262,10 +284,14 @@ def save_schedule(games: list[GameResult]) -> None:
     with get_connection() as conn:
         conn.executemany(
             """INSERT INTO games
-               (scraped_at, game_date, away_team, home_team, away_score, home_score, status, venue)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (scraped_at, game_date, away_team, home_team, away_score, home_score, status, venue,
+                away_pitcher, home_pitcher)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [
-                (scraped_at, g.date, g.away_team, g.home_team, g.away_score, g.home_score, g.status, g.venue)
+                (
+                    scraped_at, g.date, g.away_team, g.home_team, g.away_score, g.home_score,
+                    g.status, g.venue, g.away_pitcher, g.home_pitcher,
+                )
                 for g in games
             ],
         )

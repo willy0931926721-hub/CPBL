@@ -128,6 +128,12 @@ export interface GamePrediction {
   awayWinProb: number;
   homePowerRating: number;
   awayPowerRating: number;
+  /** 先發投手姓名——資料來源是猜測性寫法，可能是 null（見 predictions.py 的說明）。 */
+  awayPitcher: string | null;
+  homePitcher: string | null;
+  /** 先發投手本季 ERA（防禦率），對不到投手數據時是 null。 */
+  awayPitcherEra: number | null;
+  homePitcherEra: number | null;
 }
 
 export function getPredictions(): GamePrediction[] {
@@ -141,6 +147,10 @@ export function getPredictions(): GamePrediction[] {
     awayWinProb: Number(r.away_win_prob),
     homePowerRating: Number(r.home_power_rating),
     awayPowerRating: Number(r.away_power_rating),
+    awayPitcher: (r.away_pitcher as string) ?? null,
+    homePitcher: (r.home_pitcher as string) ?? null,
+    awayPitcherEra: toNumberOrNull(r.away_pitcher_era == null ? undefined : String(r.away_pitcher_era)),
+    homePitcherEra: toNumberOrNull(r.home_pitcher_era == null ? undefined : String(r.home_pitcher_era)),
   }));
 }
 

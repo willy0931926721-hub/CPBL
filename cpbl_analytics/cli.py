@@ -42,6 +42,22 @@ def _print_report(dataset: str, report: ValidationReport) -> None:
             print(f"       - {item}")
 
 
+# 常見的分頁預設「每頁筆數」——如果抓到的筆數剛好是這幾個數字之一，很可能
+# 代表分頁展開沒有生效（例如 _try_expand_page_size 找到的下拉選單跟真正
+# 控制筆數的選單不是同一個），而不是這個球季剛好就只有這麼多人。這裡只是
+# 印出來提醒，不會讓這次執行失敗——資料本身沒有錯，只是可能不完整。
+_SUSPICIOUS_PAGE_SIZE_COUNTS = {10, 15, 20, 25, 30, 50}
+
+
+def _warn_if_suspicious_row_count(dataset: str, row_count: int) -> None:
+    if row_count in _SUSPICIOUS_PAGE_SIZE_COUNTS:
+        print(
+            f"⚠️ [{dataset}] 只抓到 {row_count} 筆，這剛好是常見的分頁預設筆數，"
+            "可能還有更多資料被分頁隱藏（見 scraper/http.py 的 "
+            "_try_expand_page_size 說明），不代表資料本身有錯，但值得留意。"
+        )
+
+
 def cmd_scrape(args: argparse.Namespace) -> int:
     storage.init_db()
     exit_code = 0
@@ -79,6 +95,7 @@ def cmd_scrape(args: argparse.Namespace) -> int:
         storage.save_scrape_run(dataset="batting", report=report, row_count=len(batting), year=args.year)
         latest_export.export_dataset_csv("batting", batting)
         _print_report("打者數據", report)
+        _warn_if_suspicious_row_count("打者數據", len(batting))
         if not report.all_passed:
             exit_code = 1
     except (FetchError, ParsingError) as exc:
@@ -94,6 +111,7 @@ def cmd_scrape(args: argparse.Namespace) -> int:
         storage.save_scrape_run(dataset="pitching", report=report, row_count=len(pitching), year=args.year)
         latest_export.export_dataset_csv("pitching", pitching)
         _print_report("投手數據", report)
+        _warn_if_suspicious_row_count("投手數據", len(pitching))
         if not report.all_passed:
             exit_code = 1
     except (FetchError, ParsingError) as exc:

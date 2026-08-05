@@ -157,7 +157,7 @@ def fetch_pitching_stats(*, html: str | None = None, year: int | None = None) ->
         # 字串裡剛好包含「打擊率」三個字，導致舊版「打擊率不見了才算切換
         # 成功」的檢查永遠判定失敗，即使切換早就成功了。
         html = get_rendered_html_after_selecting(
-            url, option_text="投手成績", verify_text_present="防禦率"
+            url, option_text="投手成績", verify_text_present="防禦率", expand_page_size=True
         )
 
     rows = parse_table(html, table_selector=TABLE_SELECTOR, columns=COLUMNS)

@@ -35,12 +35,26 @@
    `_shrink_toward()`）。網頁版表格呈現的仍然是**原始、沒收斂過**的數字，
    收斂只發生在會影響預測機率的計算內部，不會偷偷竄改攤在畫面上給人看
    的統計數字。
+6. **先發投手調整**：如果賽程資料裡有這場比賽的先發投手姓名（見
+   `scraper/schedule.py` 的 `away_pitcher`/`home_pitcher`），會拿這位投手
+   本季 ERA 跟「局數加權」的聯盟平均 ERA 比較，ERA 比聯盟平均低（表現
+   好）就對他所在的球隊加分、反之扣分，換算成一個小幅度的勝率微調（見
+   `_pitcher_edge()`）。這個微調刻意做得保守（`MAX_PITCHER_EDGE` 封頂）、
+   而不是把先發投手的權重跟球隊整體實力打對折——先發投手固然重要，但
+   單場比賽的結果同時取決於牛棚、當天打線手感、守備等一堆這裡完全沒
+   建模的因素，把先發投手的影響力估得太高，反而會讓模型在「先發投手
+   ERA 差很多、但其實牛棚更強的那隊」這種案例上，錯得比不調整還離譜。
+   跟其他指標一樣，投手 ERA 本身也依「投球局數」做小樣本收斂——球季初期
+   只投幾局的投手，字面上的 ERA 完全不能代表真實實力。找不到先發投手
+   姓名、或姓名跟已抓到的投手數據對不上時，這個調整量就是 0（不影響
+   其他因素的預測），不會讓整場預測失敗。
 
 跟賠率／讓分盤口的比較，一律是「這支程式算出來的機率 vs. 你自己提供的
-賠率」，需要你自己動手比對；沒有先發投手資料時（官網賽程頁目前只確認
-「已完賽」比賽會列出比分，尚未確認「未開賽」比賽會不會列出先發投手），
-這裡的評分只反映「兩支球隊」的整體實力，不會反映「當天先發投手」的
-臨時優劣勢，用的時候請把這個限制考慮進去。
+賠率」，需要你自己動手比對。**先發投手資料是猜測性寫法**：官網賽程頁
+「未開賽」比賽卡片實際上會不會列出先發投手、用什麼結構列出來，這支程式
+開發時所在的沙盒環境連不到官網，還沒辦法確認（見 `scraper/schedule.py`
+檔案開頭的說明）——抓不到的話，這裡的評分就只反映兩支球隊的整體實力，
+不會硬塞一個假的先發投手調整進去。
 """
 from __future__ import annotations
 
@@ -65,6 +79,90 @@ DEFAULT_WEIGHTS = (0.5, 0.3, 0.2)  # (畢氏期望值, 球季實際勝率, 近�
 SEASON_STAT_PRIOR_GAMES = 20  # 球季勝率／畢氏期望值收斂用的先驗場次數
 RECENT_FORM_PRIOR_GAMES = 10  # 近十場戰績本身樣本數就小，先驗場次數也對應調低
 HOME_AWAY_PRIOR_GAMES = 10  # 主／客場戰績通常只有個位數場次，收斂力道要更強
+
+# 先發投手 ERA 收斂用的先驗局數：投越少局，ERA 越不可信、越把數字拉回
+# 聯盟平均；20 局大約是先發投手 3~4 場先發的量，抓這個當「開始有點可信」
+# 的門檻。
+PITCHER_ERA_PRIOR_IP = 20.0
+# ERA 每比「局數加權聯盟平均 ERA」低 1.00（表現越好），對戰勝率往有利於
+# 他所在球隊的方向微調的幅度。這是參考「先發投手大約主導整場比賽三分之一
+# 到一半勝負、其餘取決於牛棚／打線／守備」這個棒球分析界常見共識抓出來的
+# 經驗係數，不是拿 CPBL 歷史資料迴歸出來的精確值，量級上刻意保守（見下面
+# MAX_PITCHER_EDGE 的說明），避免用一個沒校正過的係數就讓預測機率大幅
+# 偏移。
+PITCHER_EDGE_PER_ERA_RUN = 0.03
+# 先發投手調整量的上限：即使 ERA 差距極端（例如小樣本剛好 0.00 vs 10.00），
+# 這個調整最多只會讓對戰勝率位移這麼多，避免單一因素（尤其是還沒充分驗證
+# 過的猜測性資料）把整體預測機率推向不合理的極端值。
+MAX_PITCHER_EDGE = 0.08
+
+
+def _pitcher_lookup(pitching_df: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """把投手數據表轉成 {球員姓名: (ERA, 投球局數)} 的查詢表，給
+    `_pitcher_edge()` 用。
+
+    用「姓名」當鍵，不是球員 ID——賽程頁抓到的先發投手欄位（見
+    `scraper/schedule.py`）目前也只有姓名文字，官網頁面沒有提供可以
+    跨頁面對應的球員 ID。理論上可能發生同名同姓，但目前沒有更可靠的
+    對應方式，先以姓名為準；真的撞名的話，這裡會覆蓋成後面那筆的數字
+    （不是刻意設計，是姓名沒有唯一性的已知限制）。
+    """
+    if pitching_df.empty:
+        return {}
+    lookup: dict[str, tuple[float, float]] = {}
+    for _, row in pitching_df.iterrows():
+        name = row.get("player_name")
+        era = row.get("era")
+        outs = row.get("innings_pitched_outs")
+        if not name or pd.isna(era) or pd.isna(outs):
+            continue
+        lookup[name] = (float(era), float(outs) / 3.0)
+    return lookup
+
+
+def _league_avg_era(pitching_df: pd.DataFrame) -> float | None:
+    """局數加權的聯盟平均 ERA：用「全聯盟自責分總和 / 全聯盟局數總和」重算，
+    而不是把每個投手的 ERA 直接算術平均——後者會讓「只投一局、剛好無失分」
+    這種 ERA=0.00 的極端小樣本，跟「投滿一整季」的先發投手在平均數裡權重
+    相同，把聯盟平均拉歪。
+    """
+    if pitching_df.empty:
+        return None
+    total_outs = pitching_df["innings_pitched_outs"].sum()
+    if not total_outs:
+        return None
+    return float(pitching_df["earned_runs"].sum()) * 27 / float(total_outs)
+
+
+def _pitcher_edge(
+    pitcher_name: str | None,
+    *,
+    pitcher_lookup: dict[str, tuple[float, float]],
+    league_avg_era: float | None,
+) -> float:
+    """算出某位先發投手「相對局數加權聯盟平均 ERA」的優劣勢，轉成一個小幅度
+    的對戰勝率調整量（正值＝對他所在的球隊加分）。
+
+    ERA 本身先依投球局數做小樣本收斂（往聯盟平均拉），再跟聯盟平均的差距
+    乘上 PITCHER_EDGE_PER_ERA_RUN、封頂在 MAX_PITCHER_EDGE，方法論細節見
+    本檔案開頭 docstring 的第 6 點。
+
+    找不到投手姓名、姓名對不上已知的投手數據、或聯盟平均 ERA 算不出來
+    （例如這一輪投手數據剛好抓取失敗），一律回傳 0（沒有調整），不影響
+    其他因素的預測——這個調整是額外的加值資訊，不應該因為它算不出來，
+    就讓整場比賽的預測失敗。
+    """
+    if pitcher_name is None or league_avg_era is None or league_avg_era <= 0:
+        return 0.0
+    entry = pitcher_lookup.get(pitcher_name)
+    if entry is None:
+        return 0.0
+    era, ip = entry
+    shrunk_era = _shrink_toward(
+        era, sample_size=ip, prior_strength=PITCHER_ERA_PRIOR_IP, prior_value=league_avg_era
+    )
+    edge = (league_avg_era - shrunk_era) * PITCHER_EDGE_PER_ERA_RUN
+    return max(-MAX_PITCHER_EDGE, min(MAX_PITCHER_EDGE, edge))
 
 
 def _wtl_stats(record: str | None) -> tuple[float | None, int]:
@@ -98,8 +196,8 @@ def _wtl_win_pct(record: str | None) -> float | None:
 def _shrink_toward(
     value: float | None,
     *,
-    sample_size: int,
-    prior_strength: int,
+    sample_size: float,
+    prior_strength: float,
     prior_value: float = 0.5,
 ) -> float:
     """貝氏收斂：樣本數 sample_size 越小，結果越靠近 prior_value；越大則越接近
@@ -269,12 +367,23 @@ def predict_matchup(
     home_team: str,
     away_team: str,
     power_ratings: pd.DataFrame,
+    *,
+    home_pitcher: str | None = None,
+    away_pitcher: str | None = None,
+    pitcher_lookup: dict[str, tuple[float, float]] | None = None,
+    league_avg_era: float | None = None,
 ) -> dict | None:
     """預測一場比賽的主客隊勝率。
 
     回傳 None 代表兩隊裡至少有一支球隊不在 power_ratings 裡（例如球隊名稱
     對不上、或那支球隊還沒有任何戰績資料），呼叫端應該把這種情況當成
     「這場比賽目前無法預測」處理，而不是硬塞一個 0.5/0.5 的假結果。
+
+    home_pitcher／away_pitcher／pitcher_lookup／league_avg_era 都是選填的：
+    有提供先發投手姓名、且姓名對得上 pitcher_lookup 裡的資料時，才會套用
+    先發投手 ERA 調整（見本檔案開頭 docstring 第 6 點、`_pitcher_edge()`）；
+    任何一項缺資料，這個調整量就是 0，預測仍然照樣算得出來，只是不包含
+    先發投手因素。
     """
     ratings_by_team = power_ratings.set_index("team_name")
     if home_team not in ratings_by_team.index or away_team not in ratings_by_team.index:
@@ -288,8 +397,17 @@ def predict_matchup(
     # 主客場優勢調整：把主隊的「主場優於聯盟平均」幅度，跟客隊的
     # 「客場優於聯盟平均」幅度相減，當成對 log5 基礎機率的微調——
     # 只是加減，不是重新正規化，避免調整過頭讓機率跑出 [0, 1] 之外。
-    adjustment = ((home["home_edge_vs_league"] or 0) - (away["away_edge_vs_league"] or 0)) / 2
-    home_prob = min(max(base_home_prob + adjustment, 0.01), 0.99)
+    home_field_adjustment = ((home["home_edge_vs_league"] or 0) - (away["away_edge_vs_league"] or 0)) / 2
+
+    # 先發投手調整：邏輯跟主客場優勢調整一樣，是額外的加減微調，不是
+    # 重新正規化。home_pitcher_edge/away_pitcher_edge 找不到資料時都是 0，
+    # 兩者相減後這裡自然也是 0，不影響其他因素算出來的機率。
+    lookup = pitcher_lookup or {}
+    home_pitcher_edge = _pitcher_edge(home_pitcher, pitcher_lookup=lookup, league_avg_era=league_avg_era)
+    away_pitcher_edge = _pitcher_edge(away_pitcher, pitcher_lookup=lookup, league_avg_era=league_avg_era)
+    pitcher_adjustment = (home_pitcher_edge - away_pitcher_edge) / 2
+
+    home_prob = min(max(base_home_prob + home_field_adjustment + pitcher_adjustment, 0.01), 0.99)
 
     return {
         "home_team": home_team,
@@ -298,12 +416,32 @@ def predict_matchup(
         "away_win_prob": round(1 - home_prob, 3),
         "home_power_rating": home["power_rating"],
         "away_power_rating": away["power_rating"],
+        "home_pitcher": home_pitcher,
+        "away_pitcher": away_pitcher,
+        "home_pitcher_era": round(lookup[home_pitcher][0], 2) if home_pitcher in lookup else None,
+        "away_pitcher_era": round(lookup[away_pitcher][0], 2) if away_pitcher in lookup else None,
     }
+
+
+def _clean_optional_str(value) -> str | None:
+    """把 pandas 讀出來的「空字串／NaN／None」統一收斂成 None，其餘原樣回傳。
+
+    賽程 CSV／DataFrame 裡缺值不一定長同一個樣子——CSV 讀回來可能是空字串，
+    DataFrame 原生缺值可能是 NaN（float），這裡統一處理成 None，呼叫端不用
+    自己重複判斷好幾種「缺值」的寫法。
+    """
+    if value is None:
+        return None
+    if isinstance(value, float) and pd.isna(value):
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def predict_upcoming_games(
     schedule_df: pd.DataFrame,
     power_ratings: pd.DataFrame,
+    pitching_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """從賽程資料裡挑出「還沒比出比分」的比賽，逐場算出勝率預測。
 
@@ -311,20 +449,38 @@ def predict_upcoming_games(
     而不是用 status 文字判斷——目前只確認過「已完賽」這個狀態值的真實
     文字，未開賽/延賽等其他狀態的官網真實文字還沒見過範例，比分缺值
     是目前唯一能確定、不會因為狀態文字改版就失效的判斷依據。
+
+    pitching_df 是選填的：有提供的話，會拿來建立先發投手 ERA 查詢表跟
+    局數加權聯盟平均 ERA，套用先發投手調整（見 `predict_matchup`）；
+    不提供（或賽程資料裡本來就沒有 away_pitcher/home_pitcher 欄位）的話，
+    預測仍然照舊算得出來，只是不包含先發投手因素。
     """
+    columns = [
+        "game_date", "away_team", "home_team", "venue",
+        "home_win_prob", "away_win_prob", "home_power_rating", "away_power_rating",
+        "away_pitcher", "home_pitcher", "away_pitcher_era", "home_pitcher_era",
+    ]
     if schedule_df.empty:
-        return pd.DataFrame(
-            columns=[
-                "game_date", "away_team", "home_team", "venue",
-                "home_win_prob", "away_win_prob", "home_power_rating", "away_power_rating",
-            ]
-        )
+        return pd.DataFrame(columns=columns)
 
     upcoming = schedule_df[schedule_df["home_score"].isna() & schedule_df["away_score"].isna()]
 
+    pitcher_lookup = _pitcher_lookup(pitching_df) if pitching_df is not None else {}
+    league_avg_era = _league_avg_era(pitching_df) if pitching_df is not None else None
+
     rows: list[dict] = []
     for _, game in upcoming.iterrows():
-        prediction = predict_matchup(game["home_team"], game["away_team"], power_ratings)
+        home_pitcher = _clean_optional_str(game.get("home_pitcher"))
+        away_pitcher = _clean_optional_str(game.get("away_pitcher"))
+        prediction = predict_matchup(
+            game["home_team"],
+            game["away_team"],
+            power_ratings,
+            home_pitcher=home_pitcher,
+            away_pitcher=away_pitcher,
+            pitcher_lookup=pitcher_lookup,
+            league_avg_era=league_avg_era,
+        )
         if prediction is None:
             continue
         rows.append(
@@ -335,8 +491,4 @@ def predict_upcoming_games(
             }
         )
 
-    columns = [
-        "game_date", "away_team", "home_team", "venue",
-        "home_win_prob", "away_win_prob", "home_power_rating", "away_power_rating",
-    ]
     return pd.DataFrame(rows, columns=columns)

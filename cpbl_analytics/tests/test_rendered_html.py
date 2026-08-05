@@ -21,6 +21,7 @@ from cpbl_analytics.scraper.http import (
     _select_and_verify,
     _try_click_button_by_text,
     _try_click_by_text,
+    _try_expand_page_size,
     _try_select_option,
     get_rendered_html,
 )
@@ -197,6 +198,46 @@ def test_try_click_button_by_text_returns_false_when_nothing_matches():
     page.get_by_role.return_value.first = no_button
 
     assert _try_click_button_by_text(page, ["查詢", "搜尋", "送出"]) is False
+
+
+def test_try_expand_page_size_selects_show_all_option():
+    # 給「全記錄查詢」榜單頁用：如果找到一個下拉選單裡有「全部」這種
+    # 明確代表「顯示全部」的選項，應該選取它。
+    page = Mock()
+    page_size_select = _fake_select(["15", "30", "50", "全部"])
+    selects = Mock()
+    selects.count.return_value = 1
+    selects.nth.return_value = page_size_select
+    page.locator.return_value = selects
+
+    assert _try_expand_page_size(page) is True
+    page_size_select.select_option.assert_called_once_with(label="全部")
+
+
+def test_try_expand_page_size_ignores_unrelated_select_with_similar_text():
+    # 球隊篩選下拉選單常見會有「全部球隊」這個選項，字面上包含「全部」
+    # 兩個字，但語意是篩選條件、不是每頁筆數，不該被誤選。用精確比對
+    # （而不是「文字包含全部」）避免這種誤判。
+    page = Mock()
+    team_filter_select = _fake_select(["全部球隊", "中信兄弟", "統一7-ELEVEn獅"])
+    selects = Mock()
+    selects.count.return_value = 1
+    selects.nth.return_value = team_filter_select
+    page.locator.return_value = selects
+
+    assert _try_expand_page_size(page) is False
+    team_filter_select.select_option.assert_not_called()
+
+
+def test_try_expand_page_size_returns_false_when_no_select_matches():
+    page = Mock()
+    non_matching_select = _fake_select(["15", "30", "50"])
+    selects = Mock()
+    selects.count.return_value = 1
+    selects.nth.return_value = non_matching_select
+    page.locator.return_value = selects
+
+    assert _try_expand_page_size(page) is False
 
 
 def _page_with_selectable_option(option_texts: list[str]) -> Mock:

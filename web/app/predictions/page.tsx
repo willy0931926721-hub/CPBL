@@ -19,8 +19,9 @@ export default function PredictionsPage() {
       </header>
 
       <p className="text-xs leading-relaxed text-[var(--color-text-tertiary)]">
-        用畢氏勝率期望值、球季戰績、近況、主客場優勢算出的統計估計值，僅反映兩隊整體實力，
-        不包含當天先發投手的臨時優劣勢。
+        用畢氏勝率期望值、球季戰績、近況、主客場優勢，加上先發投手本季 ERA（找得到的話）
+        算出的統計估計值，僅供參考，不保證比賽結果。先發投手資料目前是猜測性寫法，
+        找不到時預測仍會照常顯示，只是不包含這項調整。
       </p>
 
       {predictions.length === 0 ? (

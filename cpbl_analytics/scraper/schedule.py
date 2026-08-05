@@ -35,8 +35,24 @@ Chromium）取得瀏覽器實際渲染完的 DOM，再用跟其他頁面一樣�
   獨立欄位；「客隊/主隊」「比分」也都是同一個 class 前綴（team/num）加上
   away/home 兩個修飾字，而不是兩種不同名稱的獨立欄位。
 - 目前還沒找到「日期」在卡片本身以外的什麼地方（賽程頁面很可能是「一個日期
-  標題底下放好幾張當天的比賽卡片」，日期只在標題出現一次）。這裡先嘗試往前
-  找最近一個看起來像日期標題的元素，找不到就留空，不會因此讓整批資料解析失敗。
+  標題底下放好幾張當天的比賽卡片」，日期只在標題出現一次）。這裡改用「內容
+  形狀」（例如 "8/05" "2026/08/05" "8月5日" 這種樣式的文字）去找日期，而不是
+  只看 class 名稱裡有沒有 date/day 這幾個字——舊版曾經真的踩到這個問題：
+  production 環境裡有某個 class 名稱剛好符合 /date|day/i（例如
+  "matchday"／"gameday" 這種跟賽程「第幾輪」有關、但不是日曆日期的元素），
+  導致匯出的 game_date 欄位變成 "1"、"2"、"3" 這種連續整數（賽程輪次編號），
+  不是真正的比賽日期。用內容形狀判斷比用 class 名稱判斷更不容易撿到「剛好
+  名字很像、內容完全不對」的元素，不管官網實際 class 怎麼命名都能用。
+
+⚠️ **先發投手（away_pitcher／home_pitcher）目前是還沒對照過官網真實 HTML
+的猜測性寫法**：這個開發環境本身連不到官網（見上面「重要」段落），目前只
+對照過「已完賽」比賽卡片的真實結構（上面的 HTML 範例），「未開賽」比賽卡片
+長什麼樣子、先發投手欄位用什麼 class／文字標示，還沒有實際錯誤訊息可以參考。
+這裡先用「跟球隊/比分一樣的 away／home 修飾字慣例」去猜（`.pitcher.away`／
+`.pitcher.home`），找不到就讓這兩個欄位維持 None，不會讓比賽的其他欄位
+（球隊、比分、場地、日期）解析跟著失敗。等實際觸發一次 GitHub Actions、
+看到「未開賽」比賽卡片的真實 HTML 診斷輸出，才能把這裡改成跟其他 scraper
+一樣、有真實結構佐證的精確版本。
 """
 from __future__ import annotations
 
@@ -53,6 +69,7 @@ GAME_CARD_SELECTOR = ".game"
 TEAM_SELECTOR = ".team"
 SCORE_SELECTOR = ".num"
 VENUE_SELECTOR = ".place"
+PITCHER_SELECTOR = ".pitcher, [class*='pitcher']"
 
 # 目前只實際看過 "final"（已完賽）這個狀態值；其他狀態（例如未開賽、延賽）
 # 還沒有實際範例可以對照，遇到未知的 class 就直接顯示原始文字，而不是猜。
@@ -61,6 +78,16 @@ STATUS_CLASS_LABELS = {
 }
 
 _DATE_HEADER_RE = re.compile(r"date|day", re.IGNORECASE)
+
+# 「看起來像日期」的內容形狀，而不是 class 名稱：
+#   2026/08/05、2026-08-05（年/月/日）
+#   8/05(三)、8-05（月/日，官網賽程頁常見的簡短寫法，可能還帶星期幾）
+#   8月5日 / 08月05日
+_DATE_SHAPE_RE = re.compile(
+    r"\d{4}[/-]\d{1,2}[/-]\d{1,2}"
+    r"|\d{1,2}[/-]\d{1,2}(?![/-]\d)"
+    r"|\d{1,2}\s*月\s*\d{1,2}\s*日"
+)
 
 
 def _diagnostic_html_snippet(soup: BeautifulSoup, *, limit: int = 4000) -> str:
@@ -82,18 +109,55 @@ def _diagnostic_html_snippet(soup: BeautifulSoup, *, limit: int = 4000) -> str:
 
 
 def _find_game_date(card: Tag) -> str:
-    """嘗試從卡片以外的地方（往前找最近一個像日期標題的元素）取得比賽日期。
+    """嘗試從卡片以外的地方（往前找最近一個看起來真的像日期的元素）取得比賽日期。
 
-    這是「盡量找、找不到也沒關係」的最佳猜測：目前還沒確認官網真正的日期
-    標題結構，找不到就回傳空字串，不會讓整場比賽的其他資料（球隊、比分）
+    優先用「內容形狀」判斷（_DATE_SHAPE_RE：長得像 2026/08/05、8/05、8月5日
+    這種樣式），而不是只看 class 名稱有沒有 date/day 這幾個字——舊版只看
+    class 名稱時，曾經在 production 環境真的抓到一個 class 名稱剛好符合
+    /date|day/i、但文字內容其實是賽程輪次編號（"1"、"2"、"3"...）的元素，
+    導致匯出的日期欄位整批是連續整數而不是日曆日期。往前找最近 50 個元素
+    (限制搜尋範圍，避免整頁掃到最上面的導覽列、Log 太慢)，只要文字內容
+    符合日期形狀就採用，不管它的 class 叫什麼名字，這樣即使官網實際用的
+    class 名稱跟這裡的猜測完全不同，也還是抓得到。
+
+    找不到任何符合日期形狀的元素時，才退回舊版「class 名稱猜測」當最後
+    手段；再找不到就回傳空字串，不會因此讓整場比賽的其他資料（球隊、比分）
     也一起解析失敗。
     """
+    for el in card.find_all_previous(limit=50):
+        text = el.get_text(strip=True)
+        if text and len(text) <= 40 and _DATE_SHAPE_RE.search(text):
+            return text
+
     date_like = card.find_previous(attrs={"class": _DATE_HEADER_RE})
     if date_like is not None:
         text = date_like.get_text(strip=True)
         if text:
             return text
     return ""
+
+
+def _find_starting_pitchers(card: Tag) -> tuple[str | None, str | None]:
+    """嘗試抓出這場比賽主客隊的先發投手姓名（主要對「未開賽」比賽有意義，
+    「已完賽」比賽官網通常不再顯示先發投手）。
+
+    ⚠️ 這段解析邏輯目前是猜測性寫法，還沒有機會對照官網「未開賽」比賽卡片
+    的真實 HTML（見檔案開頭的說明）。這裡先假設先發投手欄位沿用跟球隊/比分
+    一樣的慣例——同一個 class（"pitcher"）用 away/home 修飾字區分主客隊，
+    找不到就回傳 (None, None)，不會讓其他欄位的解析跟著失敗。
+    """
+    away_pitcher: str | None = None
+    home_pitcher: str | None = None
+    for el in card.select(PITCHER_SELECTOR):
+        classes = el.get("class") or []
+        text = el.get_text(strip=True)
+        if not text:
+            continue
+        if "away" in classes and away_pitcher is None:
+            away_pitcher = text
+        elif "home" in classes and home_pitcher is None:
+            home_pitcher = text
+    return away_pitcher, home_pitcher
 
 
 def _status_from_classes(card: Tag) -> str:
@@ -113,6 +177,10 @@ class GameResult:
     home_score: int | None
     status: str
     venue: str | None = None
+    # 先發投手：主要對「未開賽」比賽有意義，且目前是猜測性寫法（見
+    # _find_starting_pitchers 的說明），找不到就是 None，不影響其他欄位。
+    away_pitcher: str | None = None
+    home_pitcher: str | None = None
 
     @property
     def is_final(self) -> bool:
@@ -145,6 +213,7 @@ def fetch_schedule(*, html: str | None = None) -> list[GameResult]:
 
         away_score = int(score_els[0].get_text(strip=True)) if len(score_els) > 0 and score_els[0].get_text(strip=True).isdigit() else None
         home_score = int(score_els[1].get_text(strip=True)) if len(score_els) > 1 and score_els[1].get_text(strip=True).isdigit() else None
+        away_pitcher, home_pitcher = _find_starting_pitchers(card)
 
         games.append(
             GameResult(
@@ -155,6 +224,8 @@ def fetch_schedule(*, html: str | None = None) -> list[GameResult]:
                 home_score=home_score,
                 status=_status_from_classes(card),
                 venue=venue_el.get_text(strip=True) if venue_el else None,
+                away_pitcher=away_pitcher,
+                home_pitcher=home_pitcher,
             )
         )
 
