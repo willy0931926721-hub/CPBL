@@ -34,25 +34,26 @@ Chromium）取得瀏覽器實際渲染完的 DOM，再用跟其他頁面一樣�
 - 比賽狀態是外層 `.game` 這個 div 自己的 class（例如 "final"），不是子元素裡的
   獨立欄位；「客隊/主隊」「比分」也都是同一個 class 前綴（team/num）加上
   away/home 兩個修飾字，而不是兩種不同名稱的獨立欄位。
-- 目前還沒找到「日期」在卡片本身以外的什麼地方（賽程頁面很可能是「一個日期
-  標題底下放好幾張當天的比賽卡片」，日期只在標題出現一次）。這裡改用「內容
-  形狀」（例如 "8/05" "2026/08/05" "8月5日" 這種樣式的文字）去找日期，而不是
-  只看 class 名稱裡有沒有 date/day 這幾個字——舊版曾經真的踩到這個問題：
-  production 環境裡有某個 class 名稱剛好符合 /date|day/i（例如
-  "matchday"／"gameday" 這種跟賽程「第幾輪」有關、但不是日曆日期的元素），
-  導致匯出的 game_date 欄位變成 "1"、"2"、"3" 這種連續整數（賽程輪次編號），
-  不是真正的比賽日期。用內容形狀判斷比用 class 名稱判斷更不容易撿到「剛好
-  名字很像、內容完全不對」的元素，不管官網實際 class 怎麼命名都能用。
-
-⚠️ **先發投手（away_pitcher／home_pitcher）目前是還沒對照過官網真實 HTML
-的猜測性寫法**：這個開發環境本身連不到官網（見上面「重要」段落），目前只
-對照過「已完賽」比賽卡片的真實結構（上面的 HTML 範例），「未開賽」比賽卡片
-長什麼樣子、先發投手欄位用什麼 class／文字標示，還沒有實際錯誤訊息可以參考。
-這裡先用「跟球隊/比分一樣的 away／home 修飾字慣例」去猜（`.pitcher.away`／
-`.pitcher.home`），找不到就讓這兩個欄位維持 None，不會讓比賽的其他欄位
-（球隊、比分、場地、日期）解析跟著失敗。等實際觸發一次 GitHub Actions、
-看到「未開賽」比賽卡片的真實 HTML 診斷輸出，才能把這裡改成跟其他 scraper
-一樣、有真實結構佐證的精確版本。
+- ⚠️ **日期（game_date）目前還沒找到官網真正的日期標題結構，抓不到**。
+  第一版用「class 名稱裡有沒有 date/day」判斷，已經證實是錯的：兩次
+  production 執行都抓到一個 class 名稱剛好符合 /date|day/i、但文字內容
+  其實是賽程輪次編號（"1"、"2"、"4"...）的元素，不是日曆日期，已經把
+  這個判斷拿掉。第二版改成找「內容形狀」看起來像日期的文字（例如
+  "8/05" "2026/08/05" "8月5日"），但這一版在 production 上也還是沒找到
+  任何符合的文字——代表真正的日期標題可能：(a) 用完全不同的格式呈現
+  （例如純數字不帶分隔符、或英文月份縮寫）、(b) 離卡片本身太遠、超出目前
+  往前搜尋 50 個元素的範圍、或 (c) 根本不在卡片附近的 DOM，而是另一個
+  完全獨立的區塊（例如日期選單本身）。現在找不到符合日期形狀的文字時，
+  直接留空（不再猜測），`fetch_schedule` 會在整批比賽都沒有日期時印出
+  賽程區塊的原始 HTML 當診斷資訊，下次 GitHub Actions 執行的 log 就會
+  帶著這段輸出，不用另外寫診斷腳本手動跑。
+- ⚠️ **先發投手（away_pitcher／home_pitcher）目前也還沒對照過官網真實
+  HTML**：先用「跟球隊/比分一樣的 away／home 修飾字慣例」去猜
+  （`.pitcher.away`／`.pitcher.home`），production 上這個猜測沒有命中
+  （所有未開賽比賽的先發投手都是空的）。找不到就讓這兩個欄位維持 None，
+  不會讓比賽的其他欄位（球隊、比分、場地）解析跟著失敗；`fetch_schedule`
+  同樣會在所有未開賽比賽都抓不到先發投手時，印出第一場未開賽比賽卡片的
+  原始 HTML 當診斷資訊。
 """
 from __future__ import annotations
 
@@ -76,8 +77,6 @@ PITCHER_SELECTOR = ".pitcher, [class*='pitcher']"
 STATUS_CLASS_LABELS = {
     "final": "已完賽",
 }
-
-_DATE_HEADER_RE = re.compile(r"date|day", re.IGNORECASE)
 
 # 「看起來像日期」的內容形狀，而不是 class 名稱：
 #   2026/08/05、2026-08-05（年/月/日）
@@ -111,28 +110,19 @@ def _diagnostic_html_snippet(soup: BeautifulSoup, *, limit: int = 4000) -> str:
 def _find_game_date(card: Tag) -> str:
     """嘗試從卡片以外的地方（往前找最近一個看起來真的像日期的元素）取得比賽日期。
 
-    優先用「內容形狀」判斷（_DATE_SHAPE_RE：長得像 2026/08/05、8/05、8月5日
-    這種樣式），而不是只看 class 名稱有沒有 date/day 這幾個字——舊版只看
-    class 名稱時，曾經在 production 環境真的抓到一個 class 名稱剛好符合
-    /date|day/i、但文字內容其實是賽程輪次編號（"1"、"2"、"3"...）的元素，
-    導致匯出的日期欄位整批是連續整數而不是日曆日期。往前找最近 50 個元素
-    (限制搜尋範圍，避免整頁掃到最上面的導覽列、Log 太慢)，只要文字內容
-    符合日期形狀就採用，不管它的 class 叫什麼名字，這樣即使官網實際用的
-    class 名稱跟這裡的猜測完全不同，也還是抓得到。
-
-    找不到任何符合日期形狀的元素時，才退回舊版「class 名稱猜測」當最後
-    手段；再找不到就回傳空字串，不會因此讓整場比賽的其他資料（球隊、比分）
-    也一起解析失敗。
+    只用「內容形狀」判斷（_DATE_SHAPE_RE：長得像 2026/08/05、8/05、8月5日
+    這種樣式），不看 class 名稱——舊版有一個「class 名稱裡有 date/day 就採用」
+    的備援邏輯，實際在兩次 production 執行中都證實是錯的：抓到的文字是
+    "1"、"2"、"4"...這種賽程輪次編號，不是日曆日期（class 名稱剛好符合
+    /date|day/i，但语意完全是另一件事）。這個備援已經被拿掉，找不到符合
+    日期形狀的文字就回傳空字串，寧可留空也不要放一個確定是錯的猜測值
+    進去；呼叫端（fetch_schedule）會在整批比賽都找不到日期時印出診斷用的
+    原始 HTML，方便下次對照修正，而不是让這個函式自己編一個看起來有內容
+    但其實是錯的答案。
     """
     for el in card.find_all_previous(limit=50):
         text = el.get_text(strip=True)
         if text and len(text) <= 40 and _DATE_SHAPE_RE.search(text):
-            return text
-
-    date_like = card.find_previous(attrs={"class": _DATE_HEADER_RE})
-    if date_like is not None:
-        text = date_like.get_text(strip=True)
-        if text:
             return text
     return ""
 
@@ -201,7 +191,12 @@ def fetch_schedule(*, html: str | None = None) -> list[GameResult]:
             f"{_diagnostic_html_snippet(soup)}"
         )
 
-    games: list[GameResult] = []
+    # 保留 (card, game) 這對配對，而不是只留 games 這個 list——底下的診斷
+    # 邏輯需要「找不到日期／先發投手的那場比賽，原本對應的卡片是哪一個」，
+    # 用 games.index(...) 之類的方式反查不可靠（GameResult 是 dataclass，
+    # 兩場比賽如果欄位剛好完全一樣，index() 會配對到錯的那個），直接在
+    # 迴圈裡就地保留配對關係最簡單可靠。
+    games_with_cards: list[tuple[Tag, GameResult]] = []
     for card in cards:
         team_els = card.select(TEAM_SELECTOR)
         score_els = card.select(SCORE_SELECTOR)
@@ -215,7 +210,8 @@ def fetch_schedule(*, html: str | None = None) -> list[GameResult]:
         home_score = int(score_els[1].get_text(strip=True)) if len(score_els) > 1 and score_els[1].get_text(strip=True).isdigit() else None
         away_pitcher, home_pitcher = _find_starting_pitchers(card)
 
-        games.append(
+        games_with_cards.append((
+            card,
             GameResult(
                 date=_find_game_date(card),
                 away_team=team_els[0].get_text(strip=True),
@@ -226,8 +222,10 @@ def fetch_schedule(*, html: str | None = None) -> list[GameResult]:
                 venue=venue_el.get_text(strip=True) if venue_el else None,
                 away_pitcher=away_pitcher,
                 home_pitcher=home_pitcher,
-            )
-        )
+            ),
+        ))
+
+    games = [g for _, g in games_with_cards]
 
     if not games:
         first_card_html = str(cards[0])
@@ -239,6 +237,33 @@ def fetch_schedule(*, html: str | None = None) -> list[GameResult]:
             "所以一場比賽都沒解析出來。可能是 GAME_CARD_SELECTOR 抓到了不相關的元素"
             "（例如篩選用的下拉選單），或是 TEAM_SELECTOR 對不上真正球隊名稱的 class。\n"
             f"第一個疑似卡片的原始 HTML（截斷）：\n{first_card_html}"
+        )
+
+    # 日期／先發投手都是「找不到就留空，不讓整批資料解析失敗」的欄位（見
+    # _find_game_date／_find_starting_pitchers 的說明），所以這裡不會用
+    # ParsingError 擋下整個 scrape。但「整批比賽都找不到」通常代表猜測的
+    # 判斷邏輯本身就沒對上官網真實結構，不是單一比賽的個案，值得印出來、
+    # 而不是靜靜地留一堆空欄位——下次 GitHub Actions 執行的 log 就會帶著
+    # 這段診斷用的原始 HTML，不用另外寫診斷腳本手動跑。
+    if all(g.date == "" for g in games):
+        print(
+            "⚠️ 賽程頁面所有比賽都沒有抓到日期（_find_game_date 找不到任何"
+            "符合日期形狀的文字）。以下是賽程區塊的原始 HTML（截斷），"
+            "有助於確認官網真正的日期標題結構長什麼樣子：\n"
+            f"{_diagnostic_html_snippet(soup, limit=6000)}"
+        )
+
+    upcoming = [(c, g) for c, g in games_with_cards if not g.is_final]
+    if upcoming and all(g.away_pitcher is None and g.home_pitcher is None for _, g in upcoming):
+        first_upcoming_card, _ = upcoming[0]
+        card_html = str(first_upcoming_card)
+        if len(card_html) > 4000:
+            card_html = card_html[:4000] + f"...(截斷，完整長度 {len(card_html)} 字元)"
+        print(
+            "⚠️ 賽程頁面所有「未開賽」比賽都沒有抓到先發投手（PITCHER_SELECTOR="
+            f"{PITCHER_SELECTOR!r} 在卡片裡找不到任何符合的元素）。以下是第一場"
+            "未開賽比賽卡片的原始 HTML，有助於確認先發投手欄位的真正結構：\n"
+            f"{card_html}"
         )
 
     return games
