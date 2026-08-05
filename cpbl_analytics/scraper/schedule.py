@@ -10,6 +10,7 @@ Chromium）取得瀏覽器實際渲染完的 DOM，再用跟其他頁面一樣�
 官網目前的實際卡片結構（2026 球季，從真實錯誤訊息確認過）：
 
 ```html
+<!-- 已完賽 -->
 <div class="game final">
   <a href="/box?year=2026&kindCode=A&gameSno=167">
     <div>
@@ -29,31 +30,57 @@ Chromium）取得瀏覽器實際渲染完的 DOM，再用跟其他頁面一樣�
     </div>
   </a>
 </div>
+
+<!-- 未開賽（從實際 GitHub Actions 執行的診斷輸出確認，2026-08 球季）-->
+<div class="game">
+  <a href="/box?year=2026&kindCode=A&gameSno=246">
+    <div>
+      <div class="info">
+        <div class="place">天母</div>
+        <div class="game_no">246</div>
+      </div>
+      <div class="vs_box">
+        <div class="team away"><span title="統一7-ELEVEn獅">統一7-ELEVEn獅</span></div>
+        <div class="score"><div class="text">VS.</div></div>
+        <div class="team home"><span title="味全龍">味全龍</span></div>
+      </div>
+      <div class="remark">
+        <!-- --> <!-- --> <!-- --> <!-- --> <!-- -->
+        <div class="time">18:35</div>
+      </div>
+    </div>
+  </a>
+</div>
 ```
 
-- 比賽狀態是外層 `.game` 這個 div 自己的 class（例如 "final"），不是子元素裡的
-  獨立欄位；「客隊/主隊」「比分」也都是同一個 class 前綴（team/num）加上
-  away/home 兩個修飾字，而不是兩種不同名稱的獨立欄位。
-- ⚠️ **日期（game_date）目前還沒找到官網真正的日期標題結構，抓不到**。
-  第一版用「class 名稱裡有沒有 date/day」判斷，已經證實是錯的：兩次
-  production 執行都抓到一個 class 名稱剛好符合 /date|day/i、但文字內容
-  其實是賽程輪次編號（"1"、"2"、"4"...）的元素，不是日曆日期，已經把
-  這個判斷拿掉。第二版改成找「內容形狀」看起來像日期的文字（例如
-  "8/05" "2026/08/05" "8月5日"），但這一版在 production 上也還是沒找到
-  任何符合的文字——代表真正的日期標題可能：(a) 用完全不同的格式呈現
-  （例如純數字不帶分隔符、或英文月份縮寫）、(b) 離卡片本身太遠、超出目前
-  往前搜尋 50 個元素的範圍、或 (c) 根本不在卡片附近的 DOM，而是另一個
-  完全獨立的區塊（例如日期選單本身）。現在找不到符合日期形狀的文字時，
-  直接留空（不再猜測），`fetch_schedule` 會在整批比賽都沒有日期時印出
-  賽程區塊的原始 HTML 當診斷資訊，下次 GitHub Actions 執行的 log 就會
-  帶著這段輸出，不用另外寫診斷腳本手動跑。
-- ⚠️ **先發投手（away_pitcher／home_pitcher）目前也還沒對照過官網真實
-  HTML**：先用「跟球隊/比分一樣的 away／home 修飾字慣例」去猜
-  （`.pitcher.away`／`.pitcher.home`），production 上這個猜測沒有命中
-  （所有未開賽比賽的先發投手都是空的）。找不到就讓這兩個欄位維持 None，
-  不會讓比賽的其他欄位（球隊、比分、場地）解析跟著失敗；`fetch_schedule`
-  同樣會在所有未開賽比賽都抓不到先發投手時，印出第一場未開賽比賽卡片的
-  原始 HTML 當診斷資訊。
+- 比賽狀態是外層 `.game` 這個 div 自己的 class（例如 "final"；未開賽比賽
+  目前看到的是完全沒有額外 class，只有 `"game"` 本身）；「客隊/主隊」都是
+  同一個 class 前綴（`team`）加上 away/home 兩個修飾字。已完賽比賽的比分
+  是 `.num.away`／`.num.home`；未開賽比賽的 `.score` 底下只有一個
+  `<div class="text">VS.</div>`，沒有 `.num` 元素（`away_score`／
+  `home_score` 因此正確地維持 None，`.num` 為空這件事本身就是可靠的
+  「還沒開賽」訊號，不需要額外判斷）。
+- ⚠️ **日期（game_date）目前還是抓不到，但已經排除「附近 50 個元素內」
+  這個假設**：拿掉了第一版錯誤的 class 名稱判斷（誤抓到賽程輪次編號）之後，
+  改用「內容形狀」找日期文字，在真實 production 執行中確認：不管是已完賽
+  還是未開賽比賽卡片本身、以及往前 50 個元素內，都沒有任何看起來像日期的
+  文字——真正的日期資訊應該是在卡片所在的某個「當天賽程」容器（更上層的
+  祖先元素、或它的兄弟元素）裡，用 class 名稱猜測容器（`_diagnostic_html_snippet`）
+  一次抓到的是搜尋篩選表單（`.ScheduleSearch`，同樣帶有 "schedule" 字樣，
+  但語意是年份/月份/場地篩選，不是賽程卡片本身），不是有用的資訊。已經
+  改成直接照 DOM 結構往上爬固定層數（`_game_group_context_snippet`），
+  不再用字串猜測容器，下次執行應該能看到卡片真正的祖先/兄弟結構，才能
+  確認日期標題到底長什麼樣子。
+- ⚠️ **先發投手（away_pitcher／home_pitcher）**：從上面「未開賽」的真實
+  卡片結構可以看到，官網賽程卡片本身完全沒有先發投手相關文字——`.remark`
+  底下除了幾個空的 HTML 註解（很可能是 Vue 模板裡條件渲染、但目前沒有
+  資料可顯示的欄位，例如天氣、轉播資訊）跟開賽時間 `.time` 之外沒有其他
+  內容。這場是抽樣到的第一場未開賽比賽（照 game_no 推斷應該是最近的
+  下一場），仍然完全沒有先發投手資訊，比較可能的解釋是官網要等更接近
+  比賽時間才會公布、或這項資訊根本不在賽程卡片這個頁面上（可能要另外找
+  別的頁面）。程式維持現狀（找不到就是 None，不影響其他欄位），比賽勝率
+  預測在沒有先發投手資料時會自動退回只反映兩隊整體實力；先不再對這個
+  selector 做第三次猜測，除非之後有新的線索。
 """
 from __future__ import annotations
 
@@ -81,11 +108,11 @@ STATUS_CLASS_LABELS = {
 # 「看起來像日期」的內容形狀，而不是 class 名稱：
 #   2026/08/05、2026-08-05（年/月/日）
 #   8/05(三)、8-05（月/日，官網賽程頁常見的簡短寫法，可能還帶星期幾）
-#   8月5日 / 08月05日
+#   8月5日 / 08月05日 / 2026年8月5日
 _DATE_SHAPE_RE = re.compile(
     r"\d{4}[/-]\d{1,2}[/-]\d{1,2}"
     r"|\d{1,2}[/-]\d{1,2}(?![/-]\d)"
-    r"|\d{1,2}\s*月\s*\d{1,2}\s*日"
+    r"|(?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*日"
 )
 
 
@@ -101,6 +128,32 @@ def _diagnostic_html_snippet(soup: BeautifulSoup, *, limit: int = 4000) -> str:
         attrs={"class": re.compile(r"schedule|game|box", re.IGNORECASE)}
     ) or soup.find(attrs={"id": re.compile(r"schedule|game|box", re.IGNORECASE)})
     target = candidate if candidate is not None else soup.find("body") or soup
+    raw = str(target)
+    if len(raw) > limit:
+        return raw[:limit] + f"...(截斷，完整長度 {len(raw)} 字元)"
+    return raw
+
+
+def _game_group_context_snippet(card: Tag, *, ancestor_levels: int = 4, limit: int = 8000) -> str:
+    """取得某張賽程卡片「往上幾層祖先容器」的原始 HTML，用來找日期標題這種
+    不在卡片本身裡、而是跟卡片同一層或更上層的兄弟元素的資訊。
+
+    跟 _diagnostic_html_snippet() 的差異：後者是在「完全沒找到任何卡片」時，
+    用「猜官網用了哪個 class 名稱」的方式在整個頁面裡找一個看起來像賽程
+    區塊的容器——這個猜測法實際踩到一個地雷：官網搜尋篩選表單的 class 剛好
+    叫 `ScheduleSearch`（年份/月份/場地下拉選單），字面上完全符合
+    「schedule」這個猜測條件，但語意上跟賽程卡片本身沒有關係，_find_game_date
+    真正該找的日期標題完全不在那裡。這裡改成已經有一張真的卡片在手上，
+    直接照 DOM 結構本身往上爬固定層數，不用再靠字串比對去猜該找哪個容器
+    ——如果日期標題是「同一個日期分組容器裡的某個兄弟元素」這種常見結構，
+    爬固定層數的祖先幾乎一定會涵蓋到它。
+    """
+    target: Tag = card
+    for _ in range(ancestor_levels):
+        parent = target.parent
+        if parent is None or not isinstance(parent, Tag):
+            break
+        target = parent
     raw = str(target)
     if len(raw) > limit:
         return raw[:limit] + f"...(截斷，完整長度 {len(raw)} 字元)"
@@ -245,12 +298,19 @@ def fetch_schedule(*, html: str | None = None) -> list[GameResult]:
     # 判斷邏輯本身就沒對上官網真實結構，不是單一比賽的個案，值得印出來、
     # 而不是靜靜地留一堆空欄位——下次 GitHub Actions 執行的 log 就會帶著
     # 這段診斷用的原始 HTML，不用另外寫診斷腳本手動跑。
+    #
+    # 這裡刻意用 _game_group_context_snippet(第一張卡片) 而不是
+    # _diagnostic_html_snippet(soup)——後者用「class 名稱裡有 schedule 字樣」
+    # 去猜容器，實際執行時真的誤中了搜尋篩選表單（class="ScheduleSearch"，
+    # 字面上符合但語意完全無關），沒有提供任何有用的線索。前者直接照 DOM
+    # 結構從真正的卡片往上爬固定層數，才可能真的涵蓋到日期標題所在的
+    # 兄弟元素。
     if all(g.date == "" for g in games):
         print(
             "⚠️ 賽程頁面所有比賽都沒有抓到日期（_find_game_date 找不到任何"
-            "符合日期形狀的文字）。以下是賽程區塊的原始 HTML（截斷），"
-            "有助於確認官網真正的日期標題結構長什麼樣子：\n"
-            f"{_diagnostic_html_snippet(soup, limit=6000)}"
+            "符合日期形狀的文字）。以下是第一張卡片往上幾層祖先容器的原始"
+            "HTML（截斷），有助於確認官網真正的日期標題結構長什麼樣子：\n"
+            f"{_game_group_context_snippet(games_with_cards[0][0])}"
         )
 
     upcoming = [(c, g) for c, g in games_with_cards if not g.is_final]
