@@ -106,6 +106,19 @@ def test_fetch_schedule_leaves_date_and_pitchers_blank_when_not_found():
     assert games[0].home_pitcher is None
 
 
+def test_fetch_schedule_prints_diagnostic_html_when_all_dates_missing(capsys):
+    # 這是實際在 production 踩到的情況：兩支球隊、比分都解析對了，但整批
+    # 比賽都沒有日期——這種「整批都找不到」通常代表判斷邏輯本身沒對上
+    # 官網真實結構，值得印出診斷用的原始 HTML，而不是靜靜留一堆空欄位、
+    # 下次還要另外寫診斷腳本才能查。
+    fetch_schedule(html=REAL_STRUCTURE_HTML)
+    captured = capsys.readouterr()
+    assert "所有比賽都沒有抓到日期" in captured.out
+    assert "亞太主" in captured.out  # 診斷輸出裡應該包含賽程區塊的原始 HTML
+
+
+
+
 # 這個 fixture 裡的「日期標題」跟「先發投手」結構是根據 schedule.py 目前的
 # 猜測性解析邏輯設計的（見該檔案開頭「⚠️」段落的說明），**還沒有對照過官網
 # 「未開賽」比賽卡片的真實 HTML**。這個測試只驗證「如果官網真的長這樣，
@@ -159,3 +172,27 @@ def test_fetch_schedule_extracts_starting_pitchers_when_present():
     assert game.away_score is None
     assert game.home_score is None
     assert game.is_final is False
+
+
+def test_fetch_schedule_does_not_print_diagnostics_when_date_and_pitchers_found(capsys):
+    # 對照組：日期跟先發投手都有找到時，不該印出「整批都找不到」的診斷
+    # 訊息（那是保留給「猜測邏輯本身沒對上官網結構」的情況用的）。
+    fetch_schedule(html=UPCOMING_GAME_WITH_DATE_AND_PITCHERS_HTML)
+    captured = capsys.readouterr()
+    assert "所有比賽都沒有抓到日期" not in captured.out
+    assert "沒有抓到先發投手" not in captured.out
+
+
+def test_fetch_schedule_prints_diagnostic_html_when_all_upcoming_pitchers_missing(capsys):
+    # 先發投手抓不到，但日期抓得到——確認兩個診斷是各自獨立觸發的，
+    # 不是綁在一起判斷。
+    html = UPCOMING_GAME_WITH_DATE_AND_PITCHERS_HTML.replace('class="pitcher away"', 'class="starter away"').replace(
+        'class="pitcher home"', 'class="starter home"'
+    )
+    games = fetch_schedule(html=html)
+    assert games[0].away_pitcher is None
+    assert games[0].home_pitcher is None
+
+    captured = capsys.readouterr()
+    assert "沒有抓到先發投手" in captured.out
+    assert "所有比賽都沒有抓到日期" not in captured.out
