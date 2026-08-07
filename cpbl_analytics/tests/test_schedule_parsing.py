@@ -6,6 +6,9 @@ fixture 裡的卡片結構是從實際爬蟲失敗訊息裡貼出來的真實 HT
 """
 from __future__ import annotations
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from bs4 import BeautifulSoup
 
 from cpbl_analytics.scraper.schedule import _game_group_context_snippet, fetch_schedule
@@ -256,3 +259,113 @@ def test_game_group_context_snippet_stops_at_document_root_without_erroring():
     snippet = _game_group_context_snippet(card, ancestor_levels=50)
 
     assert "just this" in snippet
+
+
+# 這個 fixture 是照 2026-08-07 排程執行的真實診斷輸出直接比照著寫的：
+# 賽程頁面真正的版面是一個月曆表格，不是「一個日期標題底下放好幾張當天
+# 卡片」的線性列表——<td class="other_month"> 是補滿週次用的上個月尾巴
+# （沒有比賽），<td class="three_games"> 是這個月真正有比賽的格子，日期
+# 資訊是格子裡 <div class="date" data-date="9">9</div> 這個只有「這個月
+# 第幾天」的裸數字，見 schedule.py 檔案開頭「重要」段落的完整說明。
+CALENDAR_STRUCTURE_HTML = """
+<html><body><table><tbody><tr>
+  <td class="other_month">
+    <div>
+      <div class="date" data-date="27">
+                                        27
+                                    </div>
+      <div><a href="javascript:;"><div class="info"></div> <div class="vs_box"></div> <div class="remark"></div></a></div>
+    </div>
+  </td>
+  <td class="three_games">
+    <div>
+      <div class="date" data-date="9">
+                                        9
+                                    </div>
+      <div class="game">
+        <a href="/box?year=2026&kindCode=A&gameSno=247">
+          <div>
+            <div class="info">
+              <div class="place"> 澄清湖 </div>
+              <div class="game_no"> 247 </div>
+            </div>
+            <div class="vs_box">
+              <div class="team away"><span title="中信兄弟">中信兄弟</span></div>
+              <div class="score"><div class="text">VS.</div></div>
+              <div class="team home"><span title="台鋼雄鷹">台鋼雄鷹</span></div>
+            </div>
+            <div class="remark">
+              <!-- --> <!-- --> <!-- --> <!-- --> <!-- -->
+              <div class="time">18:35</div>
+            </div>
+          </div>
+        </a>
+      </div>
+    </div>
+  </td>
+</tr></tbody></table></body></html>
+"""
+
+
+def test_fetch_schedule_extracts_date_from_calendar_cell():
+    now_taipei = datetime.now(ZoneInfo("Asia/Taipei"))
+    expected_date = f"{now_taipei.year:04d}-{now_taipei.month:02d}-09"
+
+    games = fetch_schedule(html=CALENDAR_STRUCTURE_HTML)
+
+    # other_month 補位格沒有比賽卡片（<a> 底下的 .vs_box 是空的），
+    # fetch_schedule 本來就會略過「找不到 2 個以上 .team」的卡片，
+    # 所以這裡只會解析出真正的那一場。
+    assert len(games) == 1
+    game = games[0]
+    assert game.date == expected_date
+    assert game.away_team == "中信兄弟"
+    assert game.home_team == "台鋼雄鷹"
+    assert game.is_final is False
+
+
+def test_fetch_schedule_leaves_date_blank_for_other_month_calendar_cells():
+    # other_month 儲存格代表月曆版面補滿週次用的相鄰月份日期，沒辦法可靠
+    # 判斷究竟是上個月還是下個月，寧可留空也不要用「當月」這個假設硬套，
+    # 那樣算出來的日期會確定是錯的。
+    html = """
+    <html><body><table><tbody><tr>
+      <td class="other_month">
+        <div>
+          <div class="date" data-date="27">27</div>
+          <div class="game final">
+            <a href="/box?year=2026&kindCode=A&gameSno=200">
+              <div>
+                <div class="vs_box">
+                  <div class="team away"><span title="樂天桃猿">樂天桃猿</span></div>
+                  <div class="score">
+                    <div class="num away">3</div><div class="text">:</div><div class="num home">2</div>
+                  </div>
+                  <div class="team home"><span title="統一7-ELEVEn獅">統一7-ELEVEn獅</span></div>
+                </div>
+              </div>
+            </a>
+          </div>
+        </div>
+      </td>
+    </tr></tbody></table></body></html>
+    """
+    games = fetch_schedule(html=html)
+    assert len(games) == 1
+    assert games[0].date == ""
+
+
+def test_fetch_schedule_calendar_cell_takes_priority_over_content_shape_fallback():
+    # 卡片所在的月曆儲存格找得到日期時，不該還去跑內容形狀搜尋（萬一頁面
+    # 別的地方剛好有長得像日期的文字，容易誤判成比賽日期）。這裡故意在
+    # fixture 裡塞一段長得像日期、但跟這場比賽完全無關的文字在前面，
+    # 確認回傳的還是月曆儲存格算出來的日期，不是誤抓到的無關文字。
+    now_taipei = datetime.now(ZoneInfo("Asia/Taipei"))
+    expected_date = f"{now_taipei.year:04d}-{now_taipei.month:02d}-09"
+
+    html = CALENDAR_STRUCTURE_HTML.replace(
+        "<body><table>", '<body><div class="unrelated">2020/01/01</div><table>'
+    )
+    games = fetch_schedule(html=html)
+    assert len(games) == 1
+    assert games[0].date == expected_date

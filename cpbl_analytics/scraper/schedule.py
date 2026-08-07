@@ -53,6 +53,37 @@ Chromium）取得瀏覽器實際渲染完的 DOM，再用跟其他頁面一樣�
 </div>
 ```
 
+賽程頁真正的整體版面（從 2026-08-07 排程執行的診斷輸出第一次確認）是
+一個**月曆表格**，不是「一個日期標題底下放好幾張當天卡片」的線性列表：
+
+```html
+<table>
+  <thead><tr><th>星期一</th>...<th>星期日</th></tr></thead>
+  <tbody>
+    <tr>
+      <!-- 月曆最前面幾格用來補滿週次，顯示上個月的尾巴 -->
+      <td class="other_month">
+        <div>
+          <div class="date" data-date="27">27</div>
+          <div><a href="javascript:;">...（沒有比賽的空殼）...</a></div>
+        </div>
+      </td>
+      ...
+      <!-- 這個月的第 1 天，這天有 3 場比賽 -->
+      <td class="three_games">
+        <div>
+          <div class="date" data-date="1">1</div>
+          <div class="game final">...(第一場)...</div>
+          <div class="game final">...(第二場)...</div>
+          <div class="game final">...(第三場)...</div>
+        </div>
+      </td>
+    </tr>
+    <!-- 之後每個 <tr> 是下一週，<td> 的 data-date 繼續累加 -->
+  </tbody>
+</table>
+```
+
 - 比賽狀態是外層 `.game` 這個 div 自己的 class（例如 "final"；未開賽比賽
   目前看到的是完全沒有額外 class，只有 `"game"` 本身）；「客隊/主隊」都是
   同一個 class 前綴（`team`）加上 away/home 兩個修飾字。已完賽比賽的比分
@@ -60,17 +91,21 @@ Chromium）取得瀏覽器實際渲染完的 DOM，再用跟其他頁面一樣�
   `<div class="text">VS.</div>`，沒有 `.num` 元素（`away_score`／
   `home_score` 因此正確地維持 None，`.num` 為空這件事本身就是可靠的
   「還沒開賽」訊號，不需要額外判斷）。
-- ⚠️ **日期（game_date）目前還是抓不到，但已經排除「附近 50 個元素內」
-  這個假設**：拿掉了第一版錯誤的 class 名稱判斷（誤抓到賽程輪次編號）之後，
-  改用「內容形狀」找日期文字，在真實 production 執行中確認：不管是已完賽
-  還是未開賽比賽卡片本身、以及往前 50 個元素內，都沒有任何看起來像日期的
-  文字——真正的日期資訊應該是在卡片所在的某個「當天賽程」容器（更上層的
-  祖先元素、或它的兄弟元素）裡，用 class 名稱猜測容器（`_diagnostic_html_snippet`）
-  一次抓到的是搜尋篩選表單（`.ScheduleSearch`，同樣帶有 "schedule" 字樣，
-  但語意是年份/月份/場地篩選，不是賽程卡片本身），不是有用的資訊。已經
-  改成直接照 DOM 結構往上爬固定層數（`_game_group_context_snippet`），
-  不再用字串猜測容器，下次執行應該能看到卡片真正的祖先/兄弟結構，才能
-  確認日期標題到底長什麼樣子。
+- ✅ **日期（game_date）現在抓得到了**：前兩版猜錯的根本原因是誤把這裡當成
+  「線性列表 + 獨立日期標題」的結構去找——真正的日期資訊其實一直都在
+  卡片所在的月曆儲存格（`<td>`）裡，只是**只有「這個月第幾天」的裸數字**
+  （`<div class="date" data-date="1">1</div>`），沒有年、沒有月、也沒有
+  任何分隔符號，難怪用「內容形狀找 2026/08/05 這種完整日期文字」永遠找
+  不到，第一版誤判成「賽程輪次編號」的那串連續整數（"1","2","3"...）
+  其實就是這個裸數字本身，只是當時沒有更多上下文可以判斷它其實是「日期」
+  而不是「輪次」。現在改成直接照月曆結構取值（見 `_find_game_date`），
+  月/年則用爬蟲執行當下的台北時間推算（月曆版面預設顯示「當月」，已對照
+  過真實診斷輸出當時的日期一致）；`<td class="other_month">` 這種補滿
+  週次用的相鄰月份儲存格，因為沒辦法可靠判斷究竟是上個月還是下個月，
+  仍然保留空字串，不亂猜。內容形狀搜尋（`_DATE_SHAPE_RE`）還留著當最後
+  手段的備援，以防月曆結構之後又改版；`_game_group_context_snippet()`
+  這個「照 DOM 結構往上爬固定層數」的診斷輸出邏輯也還在，萬一兩種方法
+  都找不到日期時，下次排程執行的 log 還是會帶著有用的診斷資訊。
 - ⚠️ **先發投手（away_pitcher／home_pitcher）**：從上面「未開賽」的真實
   卡片結構可以看到，官網賽程卡片本身完全沒有先發投手相關文字——`.remark`
   底下除了幾個空的 HTML 註解（很可能是 Vue 模板裡條件渲染、但目前沒有
@@ -86,6 +121,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
@@ -160,19 +197,43 @@ def _game_group_context_snippet(card: Tag, *, ancestor_levels: int = 4, limit: i
     return raw
 
 
-def _find_game_date(card: Tag) -> str:
-    """嘗試從卡片以外的地方（往前找最近一個看起來真的像日期的元素）取得比賽日期。
+_TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
-    只用「內容形狀」判斷（_DATE_SHAPE_RE：長得像 2026/08/05、8/05、8月5日
-    這種樣式），不看 class 名稱——舊版有一個「class 名稱裡有 date/day 就採用」
-    的備援邏輯，實際在兩次 production 執行中都證實是錯的：抓到的文字是
-    "1"、"2"、"4"...這種賽程輪次編號，不是日曆日期（class 名稱剛好符合
-    /date|day/i，但语意完全是另一件事）。這個備援已經被拿掉，找不到符合
-    日期形狀的文字就回傳空字串，寧可留空也不要放一個確定是錯的猜測值
-    進去；呼叫端（fetch_schedule）會在整批比賽都找不到日期時印出診斷用的
-    原始 HTML，方便下次對照修正，而不是让這個函式自己編一個看起來有內容
-    但其實是錯的答案。
+
+def _find_game_date(card: Tag) -> str:
+    """取得比賽日期，回傳 "YYYY-MM-DD" 格式，找不到就回傳空字串。
+
+    2026-08-07 排程執行的真實診斷輸出，第一次讓我們看到官網賽程頁真正的
+    版面是一個月曆表格（見檔案開頭的「重要」段落），日期資訊就在卡片所在
+    的月曆儲存格（`<td>`）裡的 `<div class="date" data-date="1">1</div>`
+    ——只有「這個月第幾天」的裸數字，沒有年、沒有月，這也是前兩版
+    （class 名稱猜測、內容形狀搜尋）都找不到「完整日期文字」的真正原因。
+
+    年、月用「爬蟲執行當下的台北時間」推算，這是有實際診斷輸出佐證、但
+    還沒有 100% 排除例外情況的假設——官網月曆版面預設顯示的剛好是「當月」
+    （已對照過真實診斷輸出當時的日期一致），但還沒確認官網有沒有更明確
+    的「目前顯示哪個年月」欄位可以直接讀；如果之後發現在月份交界前後
+    算出來的日期不對，代表這個假設需要改成直接讀月份下拉選單目前選中的
+    值，而不是繼續假設「當月」。
+
+    `<td class="other_month">` 這種月曆版面補滿週次用的「上個月/下個月」
+    儲存格，因為沒辦法可靠判斷究竟是上個月還是下個月，這裡先保留空字串、
+    不亂猜——目前觀察到這種儲存格都是已完賽的舊比賽，對「近期賽程勝率
+    預測」這個主要使用情境（只關心還沒打的比賽）影響不大。
+
+    找不到卡片所在的 `<td>`、或裡面沒有 `.date` 元素時（例如官網又改版），
+    退回舊版「內容形狀」搜尋（_DATE_SHAPE_RE）當最後手段，不要整批比賽的
+    其他欄位都跟著解析失敗。
     """
+    day_cell = card.find_parent("td")
+    if day_cell is not None and "other_month" not in (day_cell.get("class") or []):
+        date_div = day_cell.find("div", class_=lambda c: c is not None and "date" in c.split())
+        if date_div is not None:
+            day_text = (date_div.get("data-date") or date_div.get_text(strip=True)).strip()
+            if day_text.isdigit():
+                now = datetime.now(_TAIPEI_TZ)
+                return f"{now.year:04d}-{now.month:02d}-{int(day_text):02d}"
+
     for el in card.find_all_previous(limit=50):
         text = el.get_text(strip=True)
         if text and len(text) <= 40 and _DATE_SHAPE_RE.search(text):

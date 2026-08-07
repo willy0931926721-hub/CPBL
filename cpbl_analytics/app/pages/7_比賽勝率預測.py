@@ -87,22 +87,40 @@ st.subheader("近期賽程勝率預測")
 if schedule.empty:
     st.info("尚未有賽程資料，無法列出即將開打的比賽。")
 else:
-    upcoming_predictions = predict_upcoming_games(schedule, power_ratings)
+    upcoming_predictions = predict_upcoming_games(schedule, power_ratings, pitching)
     if upcoming_predictions.empty:
         st.info(
             "目前賽程資料裡沒有找到「還沒比出比分」的比賽——可能是本季賽程都已比完、"
             "官網賽程頁目前查到的月份範圍不包含未來場次，或是兩隊裡有一隊還沒有戰績資料。"
         )
     else:
-        for _, game in upcoming_predictions.iterrows():
+        # 用 enumerate() 給每張卡片一個保證唯一的序號，widget key 不要只靠
+        # game_date/away_team/home_team 這幾個業務欄位組——game_date 目前
+        # 還沒抓到（永遠是空字串，見 scraper/schedule.py 的已知限制），同一組
+        # 對戰組合這個球季常常會打好幾場，日期缺了之後這幾個欄位組出來的 key
+        # 很容易撞在一起，Streamlit 的 number_input 遇到重複 key 會直接整頁
+        # 噴 StreamlitDuplicateElementKey，不是「同一場比賽被畫兩次」這種
+        # 邏輯錯誤，單純是 key 不夠獨特。
+        for i, (_, game) in enumerate(upcoming_predictions.iterrows()):
             with st.container(border=True):
+                date_label = game["game_date"] or "日期未定"
                 st.markdown(
-                    f"**{game['game_date']}**　{game['away_team']} @ {game['home_team']}"
+                    f"**{date_label}**　{game['away_team']} @ {game['home_team']}"
                     + (f"　·　{game['venue']}" if game.get("venue") else "")
                 )
                 c1, c2 = st.columns(2)
                 c1.metric(f"{game['away_team']}（客）勝率", f"{game['away_win_prob']:.1%}")
                 c2.metric(f"{game['home_team']}（主）勝率", f"{game['home_win_prob']:.1%}")
+
+                pc1, pc2 = st.columns(2)
+                away_pitcher_label = game.get("away_pitcher") or "先發投手未定"
+                if game.get("away_pitcher") and game.get("away_pitcher_era") is not None:
+                    away_pitcher_label += f"（ERA {game['away_pitcher_era']:.2f}）"
+                home_pitcher_label = game.get("home_pitcher") or "先發投手未定"
+                if game.get("home_pitcher") and game.get("home_pitcher_era") is not None:
+                    home_pitcher_label += f"（ERA {game['home_pitcher_era']:.2f}）"
+                pc1.caption(f"先發投手：{away_pitcher_label}")
+                pc2.caption(f"先發投手：{home_pitcher_label}")
 
                 with st.expander("輸入你自己查到的賠率，比對隱含機率"):
                     st.caption(
@@ -115,11 +133,11 @@ else:
                     oc1, oc2 = st.columns(2)
                     away_odds = oc1.number_input(
                         f"{game['away_team']}（客）賠率", min_value=1.01, value=1.90, step=0.01,
-                        key=f"away_odds_{game['game_date']}_{game['away_team']}_{game['home_team']}",
+                        key=f"away_odds_{i}",
                     )
                     home_odds = oc2.number_input(
                         f"{game['home_team']}（主）賠率", min_value=1.01, value=1.90, step=0.01,
-                        key=f"home_odds_{game['game_date']}_{game['away_team']}_{game['home_team']}",
+                        key=f"home_odds_{i}",
                     )
                     away_implied = 1 / away_odds
                     home_implied = 1 / home_odds
@@ -159,7 +177,9 @@ else:
             rc2.metric(f"{sim_home}（主）勝率", f"{sim_result['home_win_prob']:.1%}")
 
 st.caption(
-    "限制：目前的預測只反映「兩支球隊」的整體實力（球季戰績、近況、主客場優勢），"
-    "**不包含當天先發投手的臨時優劣勢**——官網賽程頁目前還沒確認「未開賽」比賽會不會"
-    "列出先發投手，等這部分資料源確認可用後會再把先發投手的防禦率/WHIP 等指標納入模型。"
+    "預測反映球隊整體實力（球季戰績、近況、主客場優勢），找得到先發投手資料時"
+    "也會納入投手 ERA 做一個小幅度的調整（見下方每張比賽卡片的「先發投手」欄位）。"
+    "**目前官網賽程頁抽樣確認過的比賽卡片本身沒有先發投手資訊**（可能要等更接近"
+    "比賽時間才會公布，或是在別的頁面），所以「先發投手未定」是目前的常態，"
+    "不代表程式邏輯有問題；等資料源確認可用後這裡會自動開始顯示。"
 )
